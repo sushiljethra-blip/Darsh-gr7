@@ -35,20 +35,21 @@ jobs:
           # PyInstaller sees it as a local package — no path guessing needed
           python -m pip install pyvoip --target sip-dialer-app/
 
+      - name: Verify pyvoip is importable
+        shell: bash
+        working-directory: sip-dialer-app
+        run: |
+          PYTHONPATH=. python -c "import pyvoip; print('pyvoip found at:', pyvoip.__file__)"
+
       - name: Build EXE
         shell: bash
         working-directory: sip-dialer-app
         run: |
-          python -m PyInstaller \
+          PYTHONPATH=. python -m PyInstaller \
             --onefile \
             --windowed \
             --name "BPO-SIP-Dialer" \
-            --paths "." \
-            --hidden-import pyvoip \
-            --hidden-import pyvoip.voip \
-            --hidden-import pyvoip.call \
-            --hidden-import pyvoip.rtp \
-            --hidden-import pyvoip.sip \
+            --collect-all pyvoip \
             --hidden-import audioop \
             --hidden-import sounddevice \
             --collect-all sounddevice \
