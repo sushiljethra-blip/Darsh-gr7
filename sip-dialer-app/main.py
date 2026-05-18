@@ -29,13 +29,15 @@ import urllib.error
 import queue
 
 # ── Optional heavy deps ────────────────────────────────────────────────────
+_sip_import_error = ''
 try:
     from pyvoip.voip import VoIPPhone
     from pyvoip.call import CallState
     HAS_SIP = True
-except ImportError:
+except Exception as _e:
     HAS_SIP = False
     CallState = None
+    _sip_import_error = str(_e)
 
 try:
     import sounddevice as sd
@@ -1852,12 +1854,12 @@ def main():
         import tkinter.messagebox as mb
         root = tk.Tk()
         root.withdraw()
-        mb.showwarning(
+        mb.showerror(
             'Missing dependency',
-            'pyVoIP is not installed.\n\n'
-            'Run the following in your terminal/command prompt:\n\n'
-            '    pip install pyvoip PyAudio numpy\n\n'
-            'Then restart the dialer.')
+            f'pyVoIP could not be loaded.\n\n'
+            f'Error: {_sip_import_error}\n\n'
+            'Run in Command Prompt then restart:\n\n'
+            '    pip install pyvoip sounddevice numpy')
         root.destroy()
         return
 

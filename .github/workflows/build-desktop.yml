@@ -35,15 +35,18 @@ jobs:
             --onefile \
             --windowed \
             --name "BPO-SIP-Dialer" \
+            --collect-all pyvoip \
+            --collect-all sounddevice \
+            --copy-metadata pyvoip \
             --hidden-import pyvoip \
             --hidden-import pyvoip.voip \
             --hidden-import pyvoip.call \
             --hidden-import pyvoip.rtp \
             --hidden-import pyvoip.sip \
+            --hidden-import audioop \
             --hidden-import sounddevice \
             --hidden-import numpy \
-            --collect-all pyvoip \
-            --collect-all sounddevice \
+            --hidden-import _cffi_backend \
             main.py
 
       - name: Upload EXE

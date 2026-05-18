@@ -21,15 +21,18 @@ python -m PyInstaller ^
     --onefile ^
     --windowed ^
     --name "BPO-SIP-Dialer" ^
+    --collect-all pyvoip ^
+    --collect-all sounddevice ^
+    --copy-metadata pyvoip ^
     --hidden-import pyvoip ^
     --hidden-import pyvoip.voip ^
     --hidden-import pyvoip.call ^
     --hidden-import pyvoip.rtp ^
     --hidden-import pyvoip.sip ^
+    --hidden-import audioop ^
     --hidden-import sounddevice ^
     --hidden-import numpy ^
-    --hidden-import colorsys ^
-    --collect-all pyvoip ^
+    --hidden-import _cffi_backend ^
     main.py
 
 echo [4/4] Done!
