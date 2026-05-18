@@ -21,41 +21,18 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install build tools
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install "pyvoip>=1.6.4" "sounddevice>=0.4.6" "numpy>=1.24.0" pyinstaller
+          python -m pip install "sounddevice>=0.4.6" "numpy>=1.24.0" pyinstaller
 
-      - name: Copy pyvoip into app folder
+      - name: Install pyvoip into app folder
         shell: bash
-        working-directory: sip-dialer-app
         run: |
-          # Copy pyvoip package source next to main.py so PyInstaller
-          # finds it with zero path-resolution guesswork
-          python -c "
-          import pyvoip, shutil, os
-          src = os.path.dirname(pyvoip.__file__)
-          dst = os.path.join(os.getcwd(), 'pyvoip')
-          if os.path.exists(dst):
-              shutil.rmtree(dst)
-          shutil.copytree(src, dst)
-          print('Copied pyvoip from', src, 'to', dst)
-          "
-
-      - name: Copy sounddevice into app folder
-        shell: bash
-        working-directory: sip-dialer-app
-        run: |
-          python -c "
-          import sounddevice, shutil, os
-          src = os.path.dirname(sounddevice.__file__)
-          dst = os.path.join(os.getcwd(), '_sounddevice_src')
-          if os.path.exists(dst):
-              shutil.rmtree(dst)
-          shutil.copytree(src, dst)
-          print('Copied sounddevice from', src)
-          "
+          # --target puts pyvoip/ directly inside sip-dialer-app/
+          # PyInstaller sees it as a local package — no path guessing needed
+          python -m pip install pyvoip --target sip-dialer-app/
 
       - name: Build EXE
         shell: bash
@@ -65,7 +42,7 @@ jobs:
             --onefile \
             --windowed \
             --name "BPO-SIP-Dialer" \
-            --add-data "pyvoip;pyvoip" \
+            --paths "." \
             --hidden-import pyvoip \
             --hidden-import pyvoip.voip \
             --hidden-import pyvoip.call \
@@ -76,7 +53,6 @@ jobs:
             --collect-all sounddevice \
             --hidden-import numpy \
             --hidden-import _cffi_backend \
-            --copy-metadata pyvoip \
             main.py
 
       - name: Upload EXE
