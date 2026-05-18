@@ -6,6 +6,7 @@ on:
       - claude/sip-phone-dialer-auto-dial-OzKmr
     paths:
       - 'sip-dialer-app/**'
+      - '.github/workflows/build-desktop.yml'
   workflow_dispatch:
 
 jobs:
