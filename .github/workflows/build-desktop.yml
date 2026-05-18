@@ -27,6 +27,36 @@ jobs:
           python -m pip install --upgrade pip
           pip install "pyvoip>=1.6.4" "sounddevice>=0.4.6" "numpy>=1.24.0" pyinstaller
 
+      - name: Copy pyvoip into app folder
+        shell: bash
+        working-directory: sip-dialer-app
+        run: |
+          # Copy pyvoip package source next to main.py so PyInstaller
+          # finds it with zero path-resolution guesswork
+          python -c "
+          import pyvoip, shutil, os
+          src = os.path.dirname(pyvoip.__file__)
+          dst = os.path.join(os.getcwd(), 'pyvoip')
+          if os.path.exists(dst):
+              shutil.rmtree(dst)
+          shutil.copytree(src, dst)
+          print('Copied pyvoip from', src, 'to', dst)
+          "
+
+      - name: Copy sounddevice into app folder
+        shell: bash
+        working-directory: sip-dialer-app
+        run: |
+          python -c "
+          import sounddevice, shutil, os
+          src = os.path.dirname(sounddevice.__file__)
+          dst = os.path.join(os.getcwd(), '_sounddevice_src')
+          if os.path.exists(dst):
+              shutil.rmtree(dst)
+          shutil.copytree(src, dst)
+          print('Copied sounddevice from', src)
+          "
+
       - name: Build EXE
         shell: bash
         working-directory: sip-dialer-app
@@ -35,9 +65,7 @@ jobs:
             --onefile \
             --windowed \
             --name "BPO-SIP-Dialer" \
-            --collect-all pyvoip \
-            --collect-all sounddevice \
-            --copy-metadata pyvoip \
+            --add-data "pyvoip;pyvoip" \
             --hidden-import pyvoip \
             --hidden-import pyvoip.voip \
             --hidden-import pyvoip.call \
@@ -45,8 +73,10 @@ jobs:
             --hidden-import pyvoip.sip \
             --hidden-import audioop \
             --hidden-import sounddevice \
+            --collect-all sounddevice \
             --hidden-import numpy \
             --hidden-import _cffi_backend \
+            --copy-metadata pyvoip \
             main.py
 
       - name: Upload EXE
