@@ -5,7 +5,7 @@ Works with Elastix 2.5 / Asterisk over standard UDP SIP (port 5060)
 No PBX modifications required.
 
 Requirements:
-    pip install pyvoip PyAudio numpy
+    pip install pyvoip sounddevice numpy
 
 Build EXE:
     pip install pyinstaller
@@ -38,7 +38,7 @@ except ImportError:
     CallState = None
 
 try:
-    import pyaudio
+    import sounddevice as sd
     import numpy as np
     HAS_AUDIO = True
 except ImportError:
@@ -144,27 +144,23 @@ class NotesDB:
         self._conn.close()
 
 # ══════════════════════════════════════════════════════════════════════════
-#  AUDIO MANAGER
+#  AUDIO MANAGER  (uses sounddevice — ships with pre-built wheels on all OS)
 # ══════════════════════════════════════════════════════════════════════════
 class AudioManager:
-    CHUNK = 160   # 20ms at 8kHz
     RATE  = 8000
-    SILENCE = bytes(CHUNK * 2)
+    CHUNK = 160   # 20 ms at 8 kHz
 
     def __init__(self):
-        self._pa  = None
-        self._in  = None
-        self._out = None
-        self._thr = None
-        self._run = False
-        self.muted = False
+        self._stream = None
+        self._thr    = None
+        self._run    = False
+        self.muted   = False
 
     # ── public ──────────────────────────────────────────────────────────
     def start(self, call):
         self.stop()
         if not HAS_AUDIO:
             return
-        self._open()
         self._run = True
         self._thr = threading.Thread(
             target=self._single_loop, args=(call,), daemon=True)
@@ -174,7 +170,6 @@ class AudioManager:
         self.stop()
         if not HAS_AUDIO:
             return
-        self._open()
         self._run = True
         self._thr = threading.Thread(
             target=self._conf_loop, args=(call1, call2), daemon=True)
@@ -182,71 +177,72 @@ class AudioManager:
 
     def stop(self):
         self._run = False
+        if self._stream:
+            try: self._stream.stop(); self._stream.close()
+            except Exception: pass
+            self._stream = None
         if self._thr:
-            self._thr.join(timeout=1.0)
+            self._thr.join(timeout=1.5)
             self._thr = None
-        for s in (self._in, self._out):
-            if s:
-                try: s.stop_stream(); s.close()
-                except Exception: pass
-        self._in = self._out = None
-        if self._pa:
-            try: self._pa.terminate()
-            except Exception: pass
-            self._pa = None
 
-    # ── private ─────────────────────────────────────────────────────────
-    def _open(self):
-        self._pa = pyaudio.PyAudio()
-        cfg = dict(format=pyaudio.paInt16, channels=1,
-                   rate=self.RATE, frames_per_buffer=self.CHUNK)
-        self._in  = self._pa.open(input=True,  **cfg)
-        self._out = self._pa.open(output=True, **cfg)
-
-    def _mic(self):
-        if self.muted or not self._in:
-            return self.SILENCE
+    # ── private helpers ─────────────────────────────────────────────────
+    @staticmethod
+    def _rtp(call, frames):
         try:
-            return self._in.read(self.CHUNK, exception_on_overflow=False)
+            data = call.read_audio(frames, block=False)
+            if data:
+                return np.frombuffer(data, dtype=np.int16).astype(np.int32)
         except Exception:
-            return self.SILENCE
+            pass
+        return np.zeros(frames, dtype=np.int32)
 
-    def _play(self, data):
-        if self._out:
-            try: self._out.write(data)
-            except Exception: pass
+    @staticmethod
+    def _mix(*arrays):
+        return np.clip(sum(arrays), -32768, 32767).astype(np.int16)
 
-    def _rtp_read(self, call):
-        try: return call.read_audio(self.CHUNK, block=False) or self.SILENCE
-        except Exception: return self.SILENCE
-
+    # ── single call audio loop ───────────────────────────────────────────
     def _single_loop(self, call):
-        while self._run:
+        def callback(indata, outdata, frames, t, status):
+            # indata shape: (frames, 1), dtype int16
+            mic = np.zeros(frames, dtype=np.int16) if self.muted \
+                  else indata[:, 0].astype(np.int16)
             try:
-                call.write_audio(self._mic())
-                rtp = self._rtp_read(call)
-                if rtp != self.SILENCE:
-                    self._play(rtp)
+                call.write_audio(mic.tobytes())
             except Exception:
                 pass
-            time.sleep(0.001)
+            remote = self._rtp(call, frames)
+            outdata[:, 0] = remote.astype(np.int16)
 
+        try:
+            with sd.Stream(samplerate=self.RATE, channels=1,
+                           dtype='int16', blocksize=self.CHUNK,
+                           callback=callback) as self._stream:
+                while self._run:
+                    time.sleep(0.1)
+        except Exception:
+            pass
+
+    # ── conference audio loop ────────────────────────────────────────────
     def _conf_loop(self, c1, c2):
-        while self._run:
-            try:
-                mic = np.frombuffer(self._mic(),       dtype=np.int16).astype(np.int32)
-                r1  = np.frombuffer(self._rtp_read(c1), dtype=np.int16).astype(np.int32)
-                r2  = np.frombuffer(self._rtp_read(c2), dtype=np.int16).astype(np.int32)
+        def callback(indata, outdata, frames, t, status):
+            mic = np.zeros(frames, dtype=np.int32) if self.muted \
+                  else indata[:, 0].astype(np.int32)
+            r1 = self._rtp(c1, frames)
+            r2 = self._rtp(c2, frames)
+            try: c1.write_audio(self._mix(r2, mic).tobytes())
+            except Exception: pass
+            try: c2.write_audio(self._mix(r1, mic).tobytes())
+            except Exception: pass
+            outdata[:, 0] = self._mix(r1, r2)
 
-                def mix(*arrs):
-                    return np.clip(sum(arrs), -32768, 32767).astype(np.int16).tobytes()
-
-                c1.write_audio(mix(r2, mic))   # party 1 hears party 2 + mic
-                c2.write_audio(mix(r1, mic))   # party 2 hears party 1 + mic
-                self._play(mix(r1, r2))        # agent hears both parties
-            except Exception:
-                pass
-            time.sleep(0.001)
+        try:
+            with sd.Stream(samplerate=self.RATE, channels=1,
+                           dtype='int16', blocksize=self.CHUNK,
+                           callback=callback) as self._stream:
+                while self._run:
+                    time.sleep(0.1)
+        except Exception:
+            pass
 
 # ══════════════════════════════════════════════════════════════════════════
 #  SIP MANAGER
@@ -1871,9 +1867,9 @@ def main():
         root.withdraw()
         mb.showwarning(
             'Missing dependency',
-            'PyAudio or numpy is not installed.\n'
+            'sounddevice or numpy is not installed.\n'
             'Audio will not work.\n\n'
-            'Run:  pip install PyAudio numpy\n\n'
+            'Run:  pip install sounddevice numpy\n\n'
             'Continuing without audio…')
         root.destroy()
 

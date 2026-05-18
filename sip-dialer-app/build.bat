@@ -14,15 +14,7 @@ IF ERRORLEVEL 1 (
 
 echo [2/4] Installing dependencies...
 python -m pip install --upgrade pip
-python -m pip install pyvoip PyAudio numpy pyinstaller
-
-IF ERRORLEVEL 1 (
-    echo.
-    echo NOTE: PyAudio may fail on some systems.
-    echo Trying pipwin for PyAudio...
-    python -m pip install pipwin
-    python -m pipwin install pyaudio
-)
+python -m pip install pyvoip sounddevice numpy pyinstaller
 
 echo [3/4] Building EXE with PyInstaller...
 python -m PyInstaller ^
@@ -34,7 +26,7 @@ python -m PyInstaller ^
     --hidden-import pyvoip.call ^
     --hidden-import pyvoip.rtp ^
     --hidden-import pyvoip.sip ^
-    --hidden-import pyaudio ^
+    --hidden-import sounddevice ^
     --hidden-import numpy ^
     --hidden-import colorsys ^
     --collect-all pyvoip ^
