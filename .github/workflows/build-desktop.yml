@@ -22,40 +22,27 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install build tools
+      - name: Install dependencies
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "sounddevice>=0.4.6" "numpy>=1.24.0" pyinstaller
-
-      - name: Install pyvoip into app folder
-        shell: bash
-        run: |
-          # --target puts pyvoip/ directly inside sip-dialer-app/
-          # PyInstaller sees it as a local package — no path guessing needed
-          python -m pip install pyvoip --target sip-dialer-app/
-
-      - name: Verify pyvoip is importable
-        shell: bash
-        working-directory: sip-dialer-app
-        run: |
-          PYTHONPATH=. python -c "import pyvoip; print('pyvoip found at:', pyvoip.__file__)"
+          python -m pip install "sounddevice>=0.4.6" "numpy>=1.24.0" pyinstaller pyvoip
 
       - name: Build EXE
         shell: bash
-        working-directory: sip-dialer-app
         run: |
-          PYTHONPATH=. python -m PyInstaller \
+          python -m PyInstaller \
             --onefile \
             --windowed \
             --name "BPO-SIP-Dialer" \
+            --distpath sip-dialer-app/dist \
+            --workpath sip-dialer-app/build \
             --collect-all pyvoip \
             --hidden-import audioop \
-            --hidden-import sounddevice \
             --collect-all sounddevice \
             --hidden-import numpy \
             --hidden-import _cffi_backend \
-            main.py
+            sip-dialer-app/main.py
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
