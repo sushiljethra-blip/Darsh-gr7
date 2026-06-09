@@ -1640,6 +1640,96 @@ class App(tk.Tk):
             self.after(0, lambda: self._toast(
                 f'Could not fetch sheet.\nMake sure it is public.\n{e}', 'error'))
 
+    def _write_sheet_note(self, contact, note, outcome):
+        url = self.cfg.get('sheets_script_url', '').strip()
+        if not url:
+            return
+        row = contact.get('sheet_row')
+        if not row:
+            return
+        col_letter = self.cfg.get('sheets_notes_col', 'E').strip().upper() or 'E'
+        ts = datetime.datetime.now().strftime('%d %b %Y %H:%M')
+        entry = f'[{ts}] [{outcome}] {note}'.strip()
+        payload = json.dumps({'row': int(row), 'col': col_letter, 'note': entry}
+                             ).encode('utf-8')
+        threading.Thread(
+            target=self._post_to_script, args=(url, payload), daemon=True).start()
+
+    def _post_to_script(self, url, payload):
+        try:
+            req = urllib.request.Request(
+                url, data=payload,
+                headers={'Content-Type': 'application/json'})
+            urllib.request.urlopen(req, timeout=15)
+            self.after(0, lambda: self._toast('Saved to Google Sheet ✓', 'success'))
+        except Exception as e:
+            self.after(0, lambda: self._toast(f'Sheet write failed: {e}', 'warn'))
+
+    def _show_apps_script_setup(self):
+        script_code = (
+            'function doPost(e) {\n'
+            '  try {\n'
+            '    var d = JSON.parse(e.postData.contents);\n'
+            '    var colNum = d.col.toUpperCase().charCodeAt(0) - 64;\n'
+            '    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];\n'
+            '    var cell = sheet.getRange(d.row, colNum);\n'
+            '    var existing = cell.getValue();\n'
+            '    cell.setValue(existing ? existing + "\\n---\\n" + d.note : d.note);\n'
+            '    return ContentService.createTextOutput("OK");\n'
+            '  } catch(err) {\n'
+            '    return ContentService.createTextOutput("Error: " + err);\n'
+            '  }\n'
+            '}'
+        )
+        dlg = tk.Toplevel(self)
+        dlg.title('Apps Script Setup Guide')
+        dlg.configure(bg=C['bg'])
+        dlg.geometry('570x530')
+
+        tk.Label(dlg, text='Enable "Write Notes Back to Sheet"',
+                 bg=C['bg'], fg=C['txt0'],
+                 font=('Segoe UI', 11, 'bold')).pack(padx=20, pady=(18,4))
+        tk.Label(dlg,
+            text='This one-time setup lets agent notes flow directly into your Google Sheet.',
+            bg=C['bg'], fg=C['txt1'],
+            font=('Segoe UI', 9)).pack(padx=20, pady=(0,10))
+
+        steps = [
+            '1.  Open your Google Sheet  →  Extensions  →  Apps Script',
+            '2.  Delete all existing code and paste the script shown below',
+            '3.  Click the floppy-disk Save icon',
+            '4.  Click Deploy  →  New deployment',
+            '5.  Type: Web app   |   Execute as: Me   |   Who has access: Anyone',
+            '6.  Click Deploy and copy the Web App URL that appears',
+            '7.  Paste that URL into the "Apps Script URL" field in the dialer',
+        ]
+        for step in steps:
+            tk.Label(dlg, text=step, bg=C['bg'], fg=C['txt1'],
+                     font=('Segoe UI', 9), anchor='w').pack(padx=20, anchor='w', pady=1)
+
+        tk.Label(dlg, text='Paste this script into Apps Script:',
+                 bg=C['bg'], fg=C['txt2'],
+                 font=('Segoe UI', 8)).pack(padx=20, pady=(10,2), anchor='w')
+
+        code_f = tk.Frame(dlg, bg=C['bg2'], bd=1, relief='solid')
+        code_f.pack(fill='x', padx=20, pady=(0,10))
+        code_t = tk.Text(code_f, height=10, bg=C['bg2'], fg=C['green'],
+                          font=('Consolas', 8), bd=0, state='normal')
+        code_t.insert('end', script_code)
+        code_t.config(state='disabled')
+        code_t.pack(fill='x', padx=6, pady=6)
+
+        def _copy():
+            self.clipboard_clear()
+            self.clipboard_append(script_code)
+            self._toast('Script copied to clipboard ✓', 'info')
+
+        bf = tk.Frame(dlg, bg=C['bg'])
+        bf.pack(pady=8)
+        ttk.Button(bf, text='📋  Copy Script', style='Primary.TButton',
+                   command=_copy).pack(side='left', padx=5)
+        self._btn(bf, 'Close', dlg.destroy).pack(side='left', padx=5)
+
     def _column_mapper(self, rows, headers):
         dlg = tk.Toplevel(self)
         dlg.title('Map CSV Columns')
