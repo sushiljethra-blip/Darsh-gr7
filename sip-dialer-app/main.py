@@ -82,6 +82,8 @@ class Config:
         'server': '', 'port': '5060', 'username': '', 'password': '',
         'display_name': 'Agent', 'local_sip_port': '5080',
         'dial_delay': '5', 'auto_dial': False,
+        'sheets_url': '', 'sheets_gid': '0',
+        'sheets_script_url': '', 'sheets_notes_col': 'E',
     }
     def __init__(self):
         self._d = dict(self.DEFAULTS)
@@ -873,6 +875,15 @@ class App(tk.Tk):
         self._extra_frame = tk.Frame(dc, bg=C['bg2'])
         self._extra_frame.pack(fill='x', padx=10, pady=(0,6))
 
+        # sheet notes (populated when contact loaded from Google Sheet)
+        self._sec_label(body, 'Sheet Notes')
+        sn_f = tk.Frame(body, bg=C['bg2'], bd=1, relief='solid')
+        sn_f.pack(fill='x', pady=(0,6))
+        self.sheet_notes_text = tk.Text(
+            sn_f, height=2, bg=C['bg2'], fg=C['cyan'],
+            font=('Segoe UI', 8), bd=0, state='disabled', wrap='word')
+        self.sheet_notes_text.pack(fill='x', padx=6, pady=4)
+
         # outcome
         self._sec_label(body, 'Call Outcome')
         og = tk.Frame(body, bg=C['bg'])
@@ -1089,6 +1100,14 @@ class App(tk.Tk):
             tk.Label(row, text=str(v), bg=C['bg2'], fg=C['txt1'],
                      font=('Segoe UI', 9), anchor='w',
                      wraplength=160).pack(side='left')
+
+        # sheet notes
+        sn = contact.get('sheet_notes', '')
+        self.sheet_notes_text.config(state='normal')
+        self.sheet_notes_text.delete('1.0', 'end')
+        self.sheet_notes_text.config(fg=C['cyan'] if sn else C['txt2'])
+        self.sheet_notes_text.insert('end', str(sn) if sn else 'No notes in sheet for this contact')
+        self.sheet_notes_text.config(state='disabled')
 
         # outcome buttons reset
         for b, _ in self._out_btns.values():
@@ -1330,6 +1349,8 @@ class App(tk.Tk):
         self.note_input.delete('1.0', 'end')
         self._render_notes(key)
         self._toast('Note saved ✓', 'info')
+        if contact and note_text:
+            self._write_sheet_note(contact, note_text, outcome)
 
     # ──────────────────────────────────────────────────────────────────
     #  SIP EVENT → UI (via queue)
@@ -1487,54 +1508,134 @@ class App(tk.Tk):
 
     def _open_sheets_dlg(self):
         dlg = tk.Toplevel(self)
-        dlg.title('Import Google Sheet')
+        dlg.title('Google Sheets Integration')
         dlg.configure(bg=C['bg'])
-        dlg.geometry('460x220')
+        dlg.geometry('520x540')
         dlg.resizable(False, False)
 
-        tk.Label(dlg, text='Google Sheet URL', bg=C['bg'],
-                 fg=C['txt1'], font=('Segoe UI',9)).pack(padx=20,pady=(18,4),anchor='w')
-        url_var = tk.StringVar()
-        ttk.Entry(dlg, textvariable=url_var, width=55).pack(padx=20, fill='x')
-        tk.Label(dlg, text='⚠  Sheet must be publicly shared ("Anyone with link can view")',
-                 bg=C['bg'], fg=C['yellow'],
-                 font=('Segoe UI',8), wraplength=400).pack(padx=20,pady=4)
-        tk.Label(dlg, text='Sheet tab (GID) — leave 0 for first tab',
-                 bg=C['bg'], fg=C['txt1'],
-                 font=('Segoe UI',9)).pack(padx=20,pady=(4,2),anchor='w')
-        gid_var = tk.StringVar(value='0')
-        ttk.Entry(dlg, textvariable=gid_var, width=12).pack(padx=20, anchor='w')
+        def _sec(text):
+            tk.Label(dlg, text=text.upper(), bg=C['bg'], fg=C['txt2'],
+                     font=('Segoe UI', 7, 'bold')).pack(padx=16, pady=(14,2), anchor='w')
+            tk.Frame(dlg, bg=C['border'], height=1).pack(fill='x', padx=16)
 
-        def _do_import():
+        # ── Load Contacts ────────────────────────────────────────────────
+        _sec('Load Contacts from Google Sheet')
+        tk.Label(dlg, text='Google Sheet URL', bg=C['bg'], fg=C['txt1'],
+                 font=('Segoe UI',9)).pack(padx=16, pady=(6,2), anchor='w')
+        url_var = tk.StringVar(value=self.cfg.get('sheets_url',''))
+        ttk.Entry(dlg, textvariable=url_var).pack(padx=16, fill='x')
+        tk.Label(dlg,
+            text='⚠  Sheet must be shared as "Anyone with the link can view"',
+            bg=C['bg'], fg=C['yellow'],
+            font=('Segoe UI',8), wraplength=480).pack(padx=16, pady=(2,0), anchor='w')
+
+        r2 = tk.Frame(dlg, bg=C['bg'])
+        r2.pack(fill='x', padx=16, pady=(6,0))
+        tk.Label(r2, text='Sheet tab GID:', bg=C['bg'], fg=C['txt1'],
+                 font=('Segoe UI',9)).pack(side='left')
+        gid_var = tk.StringVar(value=self.cfg.get('sheets_gid','0'))
+        ttk.Entry(r2, textvariable=gid_var, width=8).pack(side='left', padx=8)
+        tk.Label(r2, text='(0 = first tab)', bg=C['bg'], fg=C['txt2'],
+                 font=('Segoe UI',8)).pack(side='left')
+
+        # ── Row Range ────────────────────────────────────────────────────
+        _sec('Row Range to Dial')
+        rr = tk.Frame(dlg, bg=C['bg'])
+        rr.pack(fill='x', padx=16, pady=8)
+        tk.Label(rr, text='Dial from row:', bg=C['bg'], fg=C['txt1'],
+                 font=('Segoe UI',9)).pack(side='left')
+        from_var = tk.StringVar(value='2')
+        ttk.Entry(rr, textvariable=from_var, width=6).pack(side='left', padx=6)
+        tk.Label(rr, text='to row:', bg=C['bg'], fg=C['txt1'],
+                 font=('Segoe UI',9)).pack(side='left', padx=(12,0))
+        to_var = tk.StringVar()
+        ttk.Entry(rr, textvariable=to_var, width=6).pack(side='left', padx=6)
+        tk.Label(rr, text='(leave empty = all rows)', bg=C['bg'], fg=C['txt2'],
+                 font=('Segoe UI',8)).pack(side='left')
+
+        # ── Write Notes Back ─────────────────────────────────────────────
+        _sec('Write Notes Back to Sheet (optional)')
+        tk.Label(dlg,
+            text='Agent notes typed during/after calls can be written directly into a column of your sheet.',
+            bg=C['bg'], fg=C['txt1'],
+            font=('Segoe UI',8), wraplength=480).pack(padx=16, pady=(4,0), anchor='w')
+
+        sr = tk.Frame(dlg, bg=C['bg'])
+        sr.pack(fill='x', padx=16, pady=(6,0))
+        tk.Label(sr, text='Apps Script URL:', bg=C['bg'], fg=C['txt1'],
+                 font=('Segoe UI',9)).pack(side='left')
+        self._btn(sr, '? Setup Guide', self._show_apps_script_setup,
+                  small=True).pack(side='right')
+        script_var = tk.StringVar(value=self.cfg.get('sheets_script_url',''))
+        ttk.Entry(dlg, textvariable=script_var).pack(padx=16, fill='x', pady=(2,0))
+
+        nc = tk.Frame(dlg, bg=C['bg'])
+        nc.pack(fill='x', padx=16, pady=(6,0))
+        tk.Label(nc, text='Notes column letter (e.g. E):', bg=C['bg'],
+                 fg=C['txt1'], font=('Segoe UI',9)).pack(side='left')
+        notes_col_var = tk.StringVar(value=self.cfg.get('sheets_notes_col','E'))
+        ttk.Entry(nc, textvariable=notes_col_var, width=4).pack(side='left', padx=8)
+        tk.Label(nc, text='← agent notes will be appended here',
+                 bg=C['bg'], fg=C['txt2'], font=('Segoe UI',8)).pack(side='left')
+
+        # ── Buttons ──────────────────────────────────────────────────────
+        def _do_load():
             url = url_var.get().strip()
             gid = gid_var.get().strip() or '0'
             m = re.search(r'/spreadsheets/d/([a-zA-Z0-9_-]+)', url)
             if not m:
                 self._toast('Invalid Google Sheet URL', 'error'); return
-            sheet_id = m.group(1)
+            try:
+                row_from = int(from_var.get().strip() or '2')
+                row_from = max(2, row_from)
+            except ValueError:
+                row_from = 2
+            try:
+                row_to = int(to_var.get().strip()) if to_var.get().strip() else None
+            except ValueError:
+                row_to = None
+            self.cfg['sheets_url']        = url
+            self.cfg['sheets_gid']        = gid
+            self.cfg['sheets_script_url'] = script_var.get().strip()
+            self.cfg['sheets_notes_col']  = notes_col_var.get().strip().upper() or 'E'
+            self.cfg.save()
+            sheet_id  = m.group(1)
             fetch_url = (f'https://docs.google.com/spreadsheets/d/{sheet_id}'
                          f'/gviz/tq?tqx=out:csv&gid={gid}')
             dlg.destroy()
             self._toast('Fetching Google Sheet…', 'info')
-            threading.Thread(target=self._fetch_sheet,
-                             args=(fetch_url,), daemon=True).start()
+            threading.Thread(
+                target=self._fetch_sheet,
+                args=(fetch_url, row_from, row_to),
+                daemon=True).start()
 
         bf = tk.Frame(dlg, bg=C['bg'])
-        bf.pack(pady=12)
+        bf.pack(pady=14)
         self._btn(bf, 'Cancel', dlg.destroy).pack(side='left', padx=5)
-        ttk.Button(bf, text='📥  Import', style='Primary.TButton',
-                   command=_do_import).pack(side='left', padx=5)
+        ttk.Button(bf, text='📥  Load Sheet', style='Primary.TButton',
+                   command=_do_load).pack(side='left', padx=5)
 
-    def _fetch_sheet(self, url):
+    def _fetch_sheet(self, url, row_from=2, row_to=None):
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=15) as r:
                 text = r.read().decode('utf-8')
-            rows = list(csv.DictReader(io.StringIO(text)))
-            if not rows:
+            all_rows = list(csv.DictReader(io.StringIO(text)))
+            if not all_rows:
                 self.after(0, lambda: self._toast('Sheet appears empty', 'error'))
                 return
-            self.after(0, lambda: self._column_mapper(rows, list(rows[0].keys())))
+            headers = list(all_rows[0].keys())
+            # CSV index 0 = sheet row 2 (row 1 is header)
+            start_i = max(0, row_from - 2)
+            end_i   = (row_to - 1) if row_to else len(all_rows)
+            rows = all_rows[start_i:end_i]
+            for i, row in enumerate(rows):
+                row['_sheet_row'] = start_i + i + 2
+            if not rows:
+                self.after(0, lambda: self._toast(
+                    f'No rows in range {row_from}–{row_to or "end"}', 'warn'))
+                return
+            self.after(0, lambda: self._column_mapper(rows, headers))
         except Exception as e:
             self.after(0, lambda: self._toast(
                 f'Could not fetch sheet.\nMake sure it is public.\n{e}', 'error'))
@@ -1543,7 +1644,7 @@ class App(tk.Tk):
         dlg = tk.Toplevel(self)
         dlg.title('Map CSV Columns')
         dlg.configure(bg=C['bg'])
-        dlg.geometry('480x380')
+        dlg.geometry('480x440')
 
         tk.Label(dlg, text=f'{len(rows)} rows · {len(headers)} columns detected',
                  bg=C['bg'], fg=C['txt1'],
@@ -1565,13 +1666,15 @@ class App(tk.Tk):
         grid = tk.Frame(dlg, bg=C['bg'])
         grid.pack(padx=20, fill='x')
         fields  = [('phone','Phone Number *'),('name','Full Name'),
-                   ('email','Email'),('company','Company')]
+                   ('email','Email'),('company','Company'),
+                   ('sheet_notes','Comments / Notes (from sheet)')]
         selects = {}
         auto_patterns = {
             'phone':   ('phone','mobile','cell','tel','number','num','contact'),
             'name':    ('name','full','contact','person','client','customer'),
             'email':   ('email','mail'),
             'company': ('company','org','business','firm','employer'),
+            'sheet_notes': ('comment','note','remark','feedback','history','status','remarks'),
         }
         for i, (fkey, flbl) in enumerate(fields):
             r, c = divmod(i, 2)
@@ -1605,26 +1708,30 @@ class App(tk.Tk):
             name_col    = selects['name'].get()
             email_col   = selects['email'].get()
             company_col = selects['company'].get()
+            notes_col   = selects['sheet_notes'].get()
 
             def col(row, c):
                 return (row.get(c,'') if c and c != '(skip)' else '') or ''
 
-            mapped_keys = {phone_col, name_col, email_col, company_col, '(skip)'}
+            mapped_keys = {phone_col, name_col, email_col, company_col,
+                           notes_col, '(skip)', '_sheet_row'}
 
             new_contacts = []
             for i, row in enumerate(rows):
                 phone = clean_phone(col(row, phone_col))
                 if not phone: continue
                 extra = {k: v for k, v in row.items()
-                         if k not in mapped_keys and v}
+                         if k not in mapped_keys and v and not k.startswith('_')}
                 new_contacts.append({
-                    'phone':   phone,
-                    'name':    col(row, name_col),
-                    'email':   col(row, email_col),
-                    'company': col(row, company_col),
-                    'extra':   extra,
-                    'status':  'pending',
-                    'rownum':  i + 1,
+                    'phone':       phone,
+                    'name':        col(row, name_col),
+                    'email':       col(row, email_col),
+                    'company':     col(row, company_col),
+                    'sheet_notes': col(row, notes_col),
+                    'sheet_row':   row.get('_sheet_row', i + 2),
+                    'extra':       extra,
+                    'status':      'pending',
+                    'rownum':      i + 1,
                 })
 
             if not new_contacts:
