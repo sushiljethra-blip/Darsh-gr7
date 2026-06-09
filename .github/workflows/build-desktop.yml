@@ -28,6 +28,34 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install "sounddevice>=0.4.6" "numpy>=1.24.0" pyinstaller pyvoip
 
+      - name: Bundle pyvoip as zip
+        shell: bash
+        run: |
+          python -c "
+import importlib.util, zipfile, os, sys
+
+spec = importlib.util.find_spec('pyvoip')
+if not spec or not spec.origin:
+    print('ERROR: pyvoip not found in sys.path:', sys.path, file=sys.stderr)
+    sys.exit(1)
+
+pkg_dir    = os.path.dirname(spec.origin)
+parent_dir = os.path.dirname(pkg_dir)
+zip_path   = os.path.join('sip-dialer-app', 'pyvoip.zip')
+
+with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
+    for root, dirs, files in os.walk(pkg_dir):
+        dirs[:] = [d for d in dirs if d != '__pycache__']
+        for fname in files:
+            if not fname.endswith('.pyc'):
+                fpath   = os.path.join(root, fname)
+                arcname = os.path.relpath(fpath, parent_dir).replace(os.sep, '/')
+                z.write(fpath, arcname)
+
+print('Created', zip_path)
+print('Entries:', zipfile.ZipFile(zip_path).namelist()[:10], '...')
+"
+
       - name: Build EXE
         shell: bash
         run: |
@@ -37,7 +65,7 @@ jobs:
             --name "BPO-SIP-Dialer" \
             --distpath sip-dialer-app/dist \
             --workpath sip-dialer-app/build \
-            --collect-all pyvoip \
+            --add-data "sip-dialer-app/pyvoip.zip;." \
             --hidden-import audioop \
             --collect-all sounddevice \
             --hidden-import numpy \

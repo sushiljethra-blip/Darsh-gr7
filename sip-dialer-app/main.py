@@ -28,6 +28,15 @@ import urllib.request
 import urllib.error
 import queue
 
+# ── Frozen-app bootstrap: pyvoip is bundled as pyvoip.zip inside _MEIPASS ──
+# PyInstaller's --collect-all sometimes misses pure-Python packages silently;
+# the zip approach is 100% reliable because --add-data never analyses imports.
+if getattr(sys, 'frozen', False):
+    _meipass = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    _pz = os.path.join(_meipass, 'pyvoip.zip')
+    if os.path.isfile(_pz) and _pz not in sys.path:
+        sys.path.insert(0, _pz)
+
 # ── Optional heavy deps ────────────────────────────────────────────────────
 _sip_import_error = ''
 try:
@@ -39,12 +48,14 @@ except Exception as _e:
     CallState = None
     _sip_import_error = str(_e)
 
+_audio_import_error = ''
 try:
     import sounddevice as sd
     import numpy as np
     HAS_AUDIO = True
-except ImportError:
+except Exception as _ae:
     HAS_AUDIO = False
+    _audio_import_error = str(_ae)
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 if getattr(sys, 'frozen', False):
@@ -2066,9 +2077,9 @@ def main():
         root.withdraw()
         mb.showwarning(
             'Missing dependency',
-            'sounddevice or numpy is not installed.\n'
-            'Audio will not work.\n\n'
-            'Run:  pip install sounddevice numpy\n\n'
+            f'Audio could not be loaded.\n\n'
+            f'Error: {_audio_import_error}\n\n'
+            'Microphone and speaker will not work.\n'
             'Continuing without audio…')
         root.destroy()
 
