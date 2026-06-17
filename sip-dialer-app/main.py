@@ -29,13 +29,21 @@ import urllib.error
 import queue
 
 # ── Frozen-app bootstrap: pyvoip is bundled as pyvoip.zip inside _MEIPASS ──
-# PyInstaller's --collect-all sometimes misses pure-Python packages silently;
-# the zip approach is 100% reliable because --add-data never analyses imports.
+# Extract to a real temp directory rather than using zipimport (sys.path zip).
+# zipimport is case-sensitive; pyVoIP's internal imports use 'pyVoIP' (capital V)
+# which zipimport won't match against lowercase 'pyvoip/' zip entries.
+# Extracting to disk lets the Windows case-insensitive filesystem handle it.
 if getattr(sys, 'frozen', False):
+    import tempfile as _tf
+    import zipfile as _zf
     _meipass = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     _pz = os.path.join(_meipass, 'pyvoip.zip')
-    if os.path.isfile(_pz) and _pz not in sys.path:
-        sys.path.insert(0, _pz)
+    if os.path.isfile(_pz):
+        _extract_dir = _tf.mkdtemp(prefix='bpo_sip_')
+        with _zf.ZipFile(_pz) as _z:
+            _z.extractall(_extract_dir)
+        if _extract_dir not in sys.path:
+            sys.path.insert(0, _extract_dir)
 
 # ── Optional heavy deps ────────────────────────────────────────────────────
 _sip_import_error = ''
