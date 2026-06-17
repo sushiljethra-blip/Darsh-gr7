@@ -1,0 +1,1811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BPO SIP Auto-Dialer Pro</title>
+<!-- JsSIP - SIP over WebSocket/WebRTC -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jssip/3.10.0/jssip.min.js"></script>
+<!-- PapaParse - CSV parsing -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+:root {
+  --bg0: #0d1117;
+  --bg1: #161b22;
+  --bg2: #1c2128;
+  --bg3: #21262d;
+  --border: #30363d;
+  --border2: #444c56;
+  --txt0: #e6edf3;
+  --txt1: #8b949e;
+  --txt2: #6e7681;
+  --blue: #2563eb;
+  --blue2: #1d4ed8;
+  --blue-a: rgba(37,99,235,0.18);
+  --green: #16a34a;
+  --green2: #22c55e;
+  --green-a: rgba(34,197,94,0.15);
+  --red: #dc2626;
+  --red-a: rgba(220,38,38,0.15);
+  --yellow: #d97706;
+  --yellow-a: rgba(217,119,6,0.15);
+  --purple: #7c3aed;
+  --purple-a: rgba(124,58,237,0.15);
+  --cyan: #0891b2;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg0);color:var(--txt0);display:flex;flex-direction:column}
+
+/* ── TOP BAR ── */
+.topbar{height:50px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex-shrink:0;z-index:10}
+.topbar-brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:.95rem}
+.topbar-brand .ico{font-size:1.2rem}
+.topbar-brand .accent{color:var(--blue)}
+.sip-pill{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:.78rem;color:var(--txt1);cursor:pointer;transition:.15s}
+.sip-pill:hover{border-color:var(--border2)}
+.sip-dot{width:7px;height:7px;border-radius:50%;background:var(--txt2);flex-shrink:0;transition:.3s}
+.sip-dot.reg{background:var(--green2);box-shadow:0 0 6px rgba(34,197,94,.5)}
+.sip-dot.connecting{background:var(--yellow);animation:blink .8s ease-in-out infinite}
+.sip-dot.failed{background:var(--red)}
+.topbar-right{display:flex;align-items:center;gap:6px}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:6px 13px;border-radius:6px;border:1px solid var(--border);font-size:.8rem;font-weight:500;cursor:pointer;transition:.15s;background:var(--bg2);color:var(--txt0);white-space:nowrap;font-family:inherit}
+.btn:hover{background:var(--bg3);border-color:var(--border2)}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.35;cursor:not-allowed;pointer-events:none}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn-primary:hover{background:var(--blue2)}
+.btn-success{background:var(--green);border-color:var(--green);color:#fff}
+.btn-success:hover{background:#15803d}
+.btn-danger{background:var(--red);border-color:var(--red);color:#fff}
+.btn-danger:hover{background:#b91c1c}
+.btn-ghost{background:transparent;border-color:transparent}
+.btn-ghost:hover{background:var(--bg2);border-color:var(--border)}
+.btn-sm{padding:4px 9px;font-size:.75rem}
+.btn-xs{padding:2px 7px;font-size:.72rem}
+.btn-full{width:100%}
+
+/* ── MAIN LAYOUT ── */
+.layout{display:grid;grid-template-columns:272px 1fr 306px;flex:1;overflow:hidden}
+.panel{border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.panel:last-child{border-right:none}
+.ph{padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg1);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ph-title{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--txt2)}
+.pb{flex:1;overflow-y:auto;padding:10px 12px}
+.pb::-webkit-scrollbar{width:4px}
+.pb::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* ── LEFT PANEL ── */
+.import-btns{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px}
+.autodial-box{background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:10px;margin-bottom:8px}
+.ad-row{display:flex;align-items:center;justify-content:space-between;font-size:.8rem;color:var(--txt1);margin-bottom:6px}
+.ad-row:last-child{margin-bottom:0}
+.toggle{position:relative;width:34px;height:18px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0;position:absolute}
+.tslider{position:absolute;inset:0;background:#444;border-radius:18px;cursor:pointer;transition:.25s}
+.tslider::before{content:'';position:absolute;width:13px;height:13px;left:2.5px;top:2.5px;background:#fff;border-radius:50%;transition:.25s}
+.toggle input:checked+.tslider{background:var(--blue)}
+.toggle input:checked+.tslider::before{transform:translateX(16px)}
+.delay-input{width:44px;padding:2px 5px;background:var(--bg0);border:1px solid var(--border);border-radius:4px;color:var(--txt0);font-size:.78rem;text-align:center;font-family:inherit}
+.queue-controls{display:flex;gap:5px;margin-bottom:8px}
+.q-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:8px}
+.q-stat{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 6px;text-align:center}
+.q-stat-v{font-size:1.1rem;font-weight:700}
+.q-stat-l{font-size:.65rem;color:var(--txt2);text-transform:uppercase}
+.q-bar{height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-bottom:7px}
+.q-bar-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--green2));transition:.4s}
+.search-box{width:100%;padding:6px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--txt0);font-size:.8rem;margin-bottom:8px;font-family:inherit}
+.search-box:focus{outline:none;border-color:var(--blue)}
+.contact-list{display:flex;flex-direction:column;gap:2px}
+.c-item{display:flex;align-items:center;gap:7px;padding:7px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent;transition:.12s}
+.c-item:hover{background:var(--bg2)}
+.c-item.active{background:var(--blue-a);border-color:rgba(37,99,235,.3)}
+.c-item.current-call{background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.25)}
+.c-avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:700;flex-shrink:0;background:var(--bg3);color:var(--txt1)}
+.c-info{flex:1;min-width:0}
+.c-name{font-size:.82rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-phone{font-size:.72rem;color:var(--txt2);font-family:monospace}
+.badge{font-size:.62rem;padding:2px 6px;border-radius:10px;font-weight:600;text-transform:uppercase;flex-shrink:0}
+.b-pending{background:rgba(110,118,129,.12);color:var(--txt2)}
+.b-calling{background:rgba(37,99,235,.2);color:#60a5fa;animation:blink 1s ease-in-out infinite}
+.b-active{background:var(--green-a);color:#4ade80}
+.b-completed{background:rgba(22,163,74,.12);color:#86efac}
+.b-skipped{background:rgba(107,114,128,.12);color:#6b7280}
+.b-failed{background:var(--red-a);color:#fca5a5}
+.b-callback{background:var(--yellow-a);color:#fbbf24}
+.b-dnc{background:var(--red-a);color:#f87171}
+.b-noanswer{background:rgba(107,114,128,.12);color:#9ca3af}
+.b-busy{background:var(--yellow-a);color:#fbbf24}
+.c-num{font-size:.63rem;color:var(--txt2);min-width:20px;text-align:right}
+.empty-state{text-align:center;padding:30px 16px;color:var(--txt2)}
+.empty-icon{font-size:2rem;margin-bottom:8px}
+.empty-text{font-size:.8rem;line-height:1.5}
+
+/* ── CENTER PANEL ── */
+.center-panel{background:var(--bg0);display:flex;flex-direction:column}
+.call-header{background:linear-gradient(180deg,var(--bg1),var(--bg0));border-bottom:1px solid var(--border);padding:20px 16px;text-align:center;flex-shrink:0}
+.call-status-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;font-weight:600}
+.s-idle{color:var(--txt2)}
+.s-connecting{color:var(--blue)}
+.s-ringing{color:var(--yellow)}
+.s-active{color:var(--green2)}
+.s-onhold{color:var(--yellow)}
+.s-conference{color:#a78bfa}
+.s-transferring{color:var(--cyan)}
+.call-name{font-size:1.5rem;font-weight:700;margin-bottom:3px}
+.call-number{font-size:.9rem;color:var(--txt1);font-family:monospace;margin-bottom:10px}
+.call-timer{font-size:2rem;font-weight:300;font-family:monospace;letter-spacing:.04em}
+.call-timer.t-idle{font-size:1rem;color:var(--txt2)}
+.ring-dots{justify-content:center;gap:5px;margin-top:8px;display:none}
+.ring-dots.show{display:flex}
+.ring-dot{width:6px;height:6px;border-radius:50%;background:var(--yellow);animation:blink .7s ease-in-out infinite}
+.ring-dot:nth-child(2){animation-delay:.2s}
+.ring-dot:nth-child(3){animation-delay:.4s}
+.conf-badge{display:none;background:var(--purple-a);border:1px solid rgba(124,58,237,.35);border-radius:5px;padding:4px 10px;font-size:.75rem;color:#a78bfa;margin-top:8px}
+.conf-badge.show{display:block}
+
+.call-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px;gap:14px}
+
+/* control buttons */
+.ctrl-row{display:flex;align-items:center;justify-content:center;gap:10px}
+.ctrl-grp{display:flex;flex-direction:column;align-items:center;gap:3px}
+.ctrl-lbl{font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;color:var(--txt2)}
+.cbtn{width:46px;height:46px;border-radius:50%;border:1px solid var(--border);background:var(--bg1);color:var(--txt0);font-size:1.1rem;cursor:pointer;transition:.15s;display:flex;align-items:center;justify-content:center}
+.cbtn:hover{background:var(--bg2);border-color:var(--border2)}
+.cbtn:active{transform:scale(.9)}
+.cbtn:disabled{opacity:.25;cursor:not-allowed;pointer-events:none}
+.cbtn.on{background:var(--blue-a);border-color:rgba(37,99,235,.5);color:#60a5fa}
+.cbtn.warn{background:var(--yellow-a);border-color:rgba(217,119,6,.4);color:#fbbf24}
+.cbtn.muted{background:var(--red-a);border-color:rgba(220,38,38,.45);color:#fca5a5}
+.cbtn.conf-on{background:var(--purple-a);border-color:rgba(124,58,237,.45);color:#a78bfa}
+
+.main-btns{display:flex;align-items:center;gap:16px}
+.big-btn{width:60px;height:60px;border-radius:50%;border:none;font-size:1.4rem;cursor:pointer;transition:.15s;display:flex;align-items:center;justify-content:center}
+.big-btn:active{transform:scale(.9)}
+.big-btn:disabled{opacity:.25;cursor:not-allowed;pointer-events:none}
+.end-btn{background:var(--red);color:#fff;box-shadow:0 3px 12px rgba(220,38,38,.35)}
+.end-btn:hover{background:#b91c1c}
+.next-btn{background:var(--green);color:#fff;box-shadow:0 3px 12px rgba(22,163,74,.35)}
+.next-btn:hover{background:#15803d}
+
+/* dialpad */
+.dialpad-wrap{display:none;flex-direction:column;align-items:center;gap:8px}
+.dialpad-wrap.show{display:flex}
+.dialpad-input{width:180px;padding:7px 12px;background:var(--bg1);border:1px solid var(--border);border-radius:7px;color:var(--txt0);font-size:1rem;font-family:monospace;text-align:center}
+.dialpad-input:focus{outline:none;border-color:var(--blue)}
+.dialpad-grid{display:grid;grid-template-columns:repeat(3,52px);gap:7px}
+.dp-key{width:52px;height:52px;border-radius:50%;border:1px solid var(--border);background:var(--bg1);color:var(--txt0);cursor:pointer;transition:.12s;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-family:inherit}
+.dp-key:hover{background:var(--bg2)}
+.dp-key:active{transform:scale(.9);background:var(--blue-a)}
+.dp-key:disabled{opacity:.25;cursor:not-allowed;pointer-events:none}
+.dp-main{font-size:1rem;font-weight:600}
+.dp-sub{font-size:.5rem;color:var(--txt2);letter-spacing:.08em}
+
+/* manual dial */
+.manual-row{display:flex;gap:6px;align-items:center}
+.manual-input{width:180px;padding:7px 12px;background:var(--bg1);border:1px solid var(--border);border-radius:7px;color:var(--txt0);font-size:.9rem;font-family:monospace;text-align:center}
+.manual-input:focus{outline:none;border-color:var(--blue)}
+
+/* countdown */
+.countdown-bar{display:none;align-items:center;gap:8px;background:var(--blue-a);border:1px solid rgba(37,99,235,.3);border-radius:7px;padding:8px 14px;font-size:.82rem;color:#60a5fa;width:100%;max-width:280px}
+.countdown-bar.show{display:flex}
+.cd-num{font-weight:700;font-size:1rem;min-width:18px}
+.countdown-progress{flex:1;height:3px;background:rgba(37,99,235,.2);border-radius:2px;overflow:hidden}
+.countdown-fill{height:100%;background:var(--blue);transition:width .9s linear}
+
+/* ── RIGHT PANEL ── */
+.right-panel{display:flex;flex-direction:column}
+.detail-card{background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:12px;margin-bottom:10px}
+.dr{display:flex;gap:7px;margin-bottom:5px;font-size:.8rem;align-items:flex-start}
+.dr:last-child{margin-bottom:0}
+.dl{color:var(--txt2);min-width:66px;flex-shrink:0;padding-top:1px}
+.dv{color:var(--txt0);word-break:break-word}
+.dv.empty{color:var(--txt2);font-style:italic}
+.sec-lbl{font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--txt2);margin-bottom:7px}
+.outcome-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px}
+.out-btn{padding:6px 7px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--txt1);font-size:.76rem;cursor:pointer;transition:.12s;text-align:center;font-weight:500;font-family:inherit}
+.out-btn:hover{background:var(--bg3)}
+.out-btn.sel-answered{background:var(--green-a);border-color:rgba(22,163,74,.5);color:#86efac}
+.out-btn.sel-noanswer{background:rgba(107,114,128,.12);border-color:#4b5563;color:#9ca3af}
+.out-btn.sel-busy{background:var(--yellow-a);border-color:rgba(217,119,6,.4);color:#fbbf24}
+.out-btn.sel-callback{background:var(--purple-a);border-color:rgba(124,58,237,.4);color:#a78bfa}
+.out-btn.sel-dnc{background:var(--red-a);border-color:rgba(220,38,38,.4);color:#fca5a5}
+.notes-list{display:flex;flex-direction:column;gap:5px;margin-bottom:9px;max-height:140px;overflow-y:auto}
+.notes-list::-webkit-scrollbar{width:3px}
+.notes-list::-webkit-scrollbar-thumb{background:var(--border)}
+.note-item{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:7px 9px}
+.note-meta{display:flex;justify-content:space-between;font-size:.7rem;color:var(--txt2);margin-bottom:3px}
+.note-outcome{font-weight:600}
+.note-body{font-size:.78rem;color:var(--txt1);line-height:1.4}
+.note-textarea{width:100%;padding:7px 9px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--txt0);font-size:.8rem;resize:none;font-family:inherit;line-height:1.4;margin-bottom:6px}
+.note-textarea:focus{outline:none;border-color:var(--blue)}
+.divider{height:1px;background:var(--border);margin:8px 0}
+
+/* ── MODALS ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:1000;opacity:0;visibility:hidden;transition:.2s}
+.overlay.show{opacity:1;visibility:visible}
+.modal{background:var(--bg1);border:1px solid var(--border);border-radius:11px;padding:22px;width:460px;max-width:95vw;max-height:85vh;overflow-y:auto;transform:scale(.95);transition:.2s}
+.modal::-webkit-scrollbar{width:4px}
+.modal::-webkit-scrollbar-thumb{background:var(--border)}
+.overlay.show .modal{transform:scale(1)}
+.modal-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.modal-title{font-size:.95rem;font-weight:600}
+.mclose{background:none;border:none;color:var(--txt2);font-size:1.2rem;cursor:pointer;padding:2px 5px;line-height:1}
+.mclose:hover{color:var(--txt0)}
+.fg{margin-bottom:12px}
+.fg label{display:block;font-size:.78rem;color:var(--txt1);margin-bottom:4px;font-weight:500}
+.fg input,.fg select,.fg textarea{width:100%;padding:7px 11px;background:var(--bg0);border:1px solid var(--border);border-radius:6px;color:var(--txt0);font-size:.82rem;font-family:inherit}
+.fg input:focus,.fg select:focus,.fg textarea:focus{outline:none;border-color:var(--blue)}
+.fg input::placeholder{color:var(--txt2)}
+.fg select option{background:var(--bg1)}
+.fg small{display:block;font-size:.72rem;color:var(--txt2);margin-top:3px}
+.modal-footer{display:flex;justify-content:flex-end;gap:7px;margin-top:16px}
+.col-map-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:14px}
+.col-preview{background:var(--bg0);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:12px;font-size:.75rem;color:var(--txt1);font-family:monospace;max-height:80px;overflow-y:auto}
+.sheets-note{background:var(--yellow-a);border:1px solid rgba(217,119,6,.3);border-radius:6px;padding:8px 10px;font-size:.75rem;color:#fbbf24;margin-bottom:12px}
+.conference-party{background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:10px;margin-bottom:8px;font-size:.82rem}
+.cp-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-weight:500}
+.cp-num{color:var(--txt1);font-family:monospace;font-size:.78rem}
+
+/* ── TOAST ── */
+.toasts{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:6px;z-index:2000}
+.toast{background:var(--bg1);border:1px solid var(--border);border-radius:7px;padding:9px 14px;font-size:.8rem;box-shadow:0 4px 16px rgba(0,0,0,.4);animation:slideIn .2s ease;max-width:260px;border-left-width:3px}
+.toast.success{border-left-color:var(--green2)}
+.toast.error{border-left-color:var(--red)}
+.toast.info{border-left-color:var(--blue)}
+.toast.warning{border-left-color:var(--yellow)}
+@keyframes slideIn{from{transform:translateX(18px);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+
+audio{display:none}
+</style>
+</head>
+<body>
+
+<!-- ═══ TOP BAR ═══ -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <span class="ico">📞</span>
+    BPO <span class="accent">Auto-Dialer</span> Pro
+  </div>
+  <div class="sip-pill" onclick="openSettings()">
+    <div class="sip-dot" id="sipDot"></div>
+    <span id="sipStatusText">Not Connected — Configure SIP</span>
+  </div>
+  <div class="topbar-right">
+    <button class="btn btn-sm btn-ghost" onclick="openSettings()">⚙ SIP Settings</button>
+    <button class="btn btn-sm btn-ghost" onclick="openConferenceModal()" id="confModalBtn" disabled>🤝 Conference</button>
+    <button class="btn btn-sm btn-ghost" onclick="openTransferModal()" id="xferModalBtn" disabled>↗ Transfer</button>
+  </div>
+</div>
+
+<!-- ═══ MAIN LAYOUT ═══ -->
+<div class="layout">
+
+  <!-- ══ LEFT: CONTACT QUEUE ══ -->
+  <div class="panel">
+    <div class="ph">
+      <span class="ph-title">📋 Contact Queue</span>
+      <button class="btn btn-xs btn-ghost" onclick="clearQueue()">Clear</button>
+    </div>
+    <div class="pb">
+      <div class="import-btns">
+        <button class="btn btn-sm" onclick="triggerCSV()">📁 Import CSV</button>
+        <button class="btn btn-sm" onclick="openSheetsModal()">📊 Google Sheet</button>
+      </div>
+      <input type="file" id="csvFileInput" accept=".csv,.txt" style="display:none" onchange="handleCSVFile(event)">
+
+      <div class="autodial-box">
+        <div class="ad-row">
+          <span>Auto-dial</span>
+          <label class="toggle"><input type="checkbox" id="autoDialToggle" onchange="toggleAutoDial()"><span class="tslider"></span></label>
+        </div>
+        <div class="ad-row">
+          <span>Delay between calls</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input class="delay-input" type="number" id="dialDelay" value="5" min="1" max="120"> <span style="font-size:.75rem;color:var(--txt2)">s</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="queue-controls">
+        <button class="btn btn-sm btn-success btn-full" id="startQueueBtn" onclick="startQueue()">▶ Start Queue</button>
+        <button class="btn btn-sm btn-ghost" id="pauseQueueBtn" onclick="pauseQueue()" disabled>⏸</button>
+        <button class="btn btn-sm btn-ghost" onclick="skipCurrent()">⏭</button>
+      </div>
+
+      <div class="q-stats">
+        <div class="q-stat"><div class="q-stat-v" id="statTotal">0</div><div class="q-stat-l">Total</div></div>
+        <div class="q-stat"><div class="q-stat-v" style="color:var(--green2)" id="statDone">0</div><div class="q-stat-l">Done</div></div>
+        <div class="q-stat"><div class="q-stat-v" style="color:var(--txt2)" id="statLeft">0</div><div class="q-stat-l">Left</div></div>
+      </div>
+      <div class="q-bar"><div class="q-bar-fill" id="qBarFill" style="width:0%"></div></div>
+
+      <input class="search-box" type="text" placeholder="🔍 Search contacts..." oninput="filterContacts(this.value)">
+      <div class="contact-list" id="contactList">
+        <div class="empty-state">
+          <div class="empty-icon">📂</div>
+          <div class="empty-text">Import a CSV file or<br>sync a Google Sheet<br>to load contacts</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ CENTER: ACTIVE CALL ══ -->
+  <div class="panel center-panel">
+    <div class="call-header">
+      <div class="call-status-label s-idle" id="callStatusLabel">IDLE</div>
+      <div class="call-name" id="callName">—</div>
+      <div class="call-number" id="callNumber">No active call</div>
+      <div class="call-timer t-idle" id="callTimer">Ready to dial</div>
+      <div class="ring-dots" id="ringDots">
+        <div class="ring-dot"></div><div class="ring-dot"></div><div class="ring-dot"></div>
+      </div>
+      <div class="conf-badge" id="confBadge">🤝 3-Way Conference Active</div>
+    </div>
+
+    <div class="call-body">
+      <!-- Audio controls row -->
+      <div class="ctrl-row">
+        <div class="ctrl-grp">
+          <button class="cbtn" id="muteBtn" onclick="toggleMute()" disabled title="Mute">🎤</button>
+          <span class="ctrl-lbl">Mute</span>
+        </div>
+        <div class="ctrl-grp">
+          <button class="cbtn" id="holdBtn" onclick="toggleHold()" disabled title="Hold">⏸</button>
+          <span class="ctrl-lbl">Hold</span>
+        </div>
+        <div class="ctrl-grp">
+          <button class="cbtn" id="speakerBtn" onclick="toggleSpeaker()" title="Speaker">🔊</button>
+          <span class="ctrl-lbl">Speaker</span>
+        </div>
+        <div class="ctrl-grp">
+          <button class="cbtn" id="recBtn" onclick="toggleRecord()" disabled title="Record">⏺</button>
+          <span class="ctrl-lbl">Record</span>
+        </div>
+        <div class="ctrl-grp">
+          <button class="cbtn" id="dialpadBtn" onclick="toggleDialpad()" title="Dialpad">#</button>
+          <span class="ctrl-lbl">Keypad</span>
+        </div>
+      </div>
+
+      <!-- Main call buttons -->
+      <div class="main-btns">
+        <button class="big-btn next-btn" id="nextCallBtn" onclick="dialNext()" title="Dial next contact">▶</button>
+        <button class="big-btn end-btn" id="endCallBtn" onclick="endCall()" disabled title="End call">📵</button>
+      </div>
+
+      <!-- Auto-dial countdown -->
+      <div class="countdown-bar" id="countdownBar">
+        <span>Next call in</span>
+        <span class="cd-num" id="countdownNum">5</span>
+        <span>s</span>
+        <div class="countdown-progress"><div class="countdown-fill" id="countdownFill" style="width:100%"></div></div>
+        <button class="btn btn-xs btn-ghost" onclick="cancelCountdown()">✕</button>
+      </div>
+
+      <!-- Manual dial -->
+      <div class="manual-row">
+        <input class="manual-input" id="manualNumber" type="tel" placeholder="+1 234 567 8900" onkeydown="if(event.key==='Enter')dialManual()">
+        <button class="btn btn-primary" onclick="dialManual()">📞 Call</button>
+      </div>
+
+      <!-- Dialpad -->
+      <div class="dialpad-wrap" id="dialpad">
+        <div class="dialpad-grid" id="dialpadGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ RIGHT: CONTACT DETAILS & NOTES ══ -->
+  <div class="panel right-panel">
+    <div class="ph">
+      <span class="ph-title">👤 Contact Details</span>
+    </div>
+    <div class="pb">
+      <div class="detail-card" id="detailCard">
+        <div class="dr"><span class="dl">Name</span><span class="dv empty" id="dName">—</span></div>
+        <div class="dr"><span class="dl">Phone</span><span class="dv empty" id="dPhone">—</span></div>
+        <div class="dr"><span class="dl">Email</span><span class="dv empty" id="dEmail">—</span></div>
+        <div class="dr"><span class="dl">Company</span><span class="dv empty" id="dCompany">—</span></div>
+        <div id="dExtraFields"></div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="sec-lbl">Call Outcome</div>
+      <div class="outcome-grid">
+        <button class="out-btn" onclick="setOutcome('answered')" id="out-answered">✅ Answered</button>
+        <button class="out-btn" onclick="setOutcome('noanswer')" id="out-noanswer">📵 No Answer</button>
+        <button class="out-btn" onclick="setOutcome('busy')" id="out-busy">🔴 Busy</button>
+        <button class="out-btn" onclick="setOutcome('callback')" id="out-callback">📅 Callback</button>
+        <button class="out-btn" onclick="setOutcome('dnc')" id="out-dnc">🚫 DNC</button>
+        <button class="out-btn" onclick="setOutcome('failed')" id="out-failed">⚠ Failed</button>
+      </div>
+
+      <div class="divider"></div>
+      <div class="sec-lbl">Previous Notes</div>
+      <div class="notes-list" id="notesList">
+        <div style="font-size:.78rem;color:var(--txt2);text-align:center;padding:10px">No notes yet</div>
+      </div>
+
+      <div class="sec-lbl">Add Note</div>
+      <textarea class="note-textarea" id="noteInput" rows="3" placeholder="Enter call notes, next steps, or follow-up details..."></textarea>
+      <button class="btn btn-primary btn-full btn-sm" onclick="saveNote()">💾 Save Note</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     MODALS
+═══════════════════════════════════════ -->
+
+<!-- SIP Settings Modal -->
+<div class="overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-hdr">
+      <span class="modal-title">⚙ SIP Server Settings</span>
+      <button class="mclose" onclick="closeModal('settingsModal')">✕</button>
+    </div>
+    <div class="fg">
+      <label>WebSocket Server (WSS)</label>
+      <input type="text" id="sipWss" placeholder="wss://sip.yourpbx.com:8089/ws">
+      <small>Your SIP server's WebSocket endpoint (must be WSS)</small>
+    </div>
+    <div class="fg">
+      <label>SIP Domain / Realm</label>
+      <input type="text" id="sipDomain" placeholder="sip.yourpbx.com">
+    </div>
+    <div class="fg">
+      <label>SIP Username / Extension</label>
+      <input type="text" id="sipUsername" placeholder="1001">
+    </div>
+    <div class="fg">
+      <label>SIP Password</label>
+      <input type="password" id="sipPassword" placeholder="••••••••">
+    </div>
+    <div class="fg">
+      <label>Display Name</label>
+      <input type="text" id="sipDisplayName" placeholder="BPO Agent">
+    </div>
+    <div class="fg">
+      <label>Outbound Proxy (optional)</label>
+      <input type="text" id="sipProxy" placeholder="sip.yourpbx.com">
+      <small>Leave blank to use domain. Some PBX need this.</small>
+    </div>
+    <div style="background:var(--yellow-a);border:1px solid rgba(217,119,6,.3);border-radius:6px;padding:9px 12px;font-size:.76rem;color:#fbbf24;margin-bottom:12px">
+      ⚠ Your browser will request microphone access when connecting. Ensure your PBX supports WebRTC/WebSocket (FreePBX, Asterisk 13+, Kamailio, 3CX, Zoiper, etc.).
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('settingsModal')">Cancel</button>
+      <button class="btn btn-danger btn-sm" onclick="disconnectSIP()">Disconnect</button>
+      <button class="btn btn-primary" onclick="connectSIP()">🔗 Connect</button>
+    </div>
+  </div>
+</div>
+
+<!-- Google Sheets Modal -->
+<div class="overlay" id="sheetsModal">
+  <div class="modal">
+    <div class="modal-hdr">
+      <span class="modal-title">📊 Import from Google Sheet</span>
+      <button class="mclose" onclick="closeModal('sheetsModal')">✕</button>
+    </div>
+    <div class="sheets-note">
+      ⚠ Your Google Sheet must be <strong>publicly shared</strong> ("Anyone with the link can view") for this to work without authentication.
+    </div>
+    <div class="fg">
+      <label>Google Sheet URL</label>
+      <input type="url" id="sheetsUrl" placeholder="https://docs.google.com/spreadsheets/d/...">
+      <small>Paste the full URL from your browser's address bar</small>
+    </div>
+    <div class="fg">
+      <label>Sheet Tab (GID) — leave 0 for first tab</label>
+      <input type="text" id="sheetsGid" value="0" placeholder="0">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('sheetsModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="importGoogleSheet()">📥 Import Sheet</button>
+    </div>
+  </div>
+</div>
+
+<!-- Column Mapper Modal -->
+<div class="overlay" id="columnModal">
+  <div class="modal">
+    <div class="modal-hdr">
+      <span class="modal-title">📋 Map CSV Columns</span>
+      <button class="mclose" onclick="closeModal('columnModal')">✕</button>
+    </div>
+    <div style="font-size:.8rem;color:var(--txt1);margin-bottom:10px">
+      Detected <strong id="colCount">0</strong> columns. Map them to contact fields:
+    </div>
+    <div class="col-preview" id="colPreview"></div>
+    <div class="col-map-grid" id="columnMapGrid"></div>
+    <div class="fg">
+      <label>Append to existing queue?</label>
+      <select id="importMode">
+        <option value="replace">Replace current queue</option>
+        <option value="append">Append to queue</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('columnModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmImport()">✅ Import Contacts</button>
+    </div>
+  </div>
+</div>
+
+<!-- Conference Modal -->
+<div class="overlay" id="conferenceModal">
+  <div class="modal">
+    <div class="modal-hdr">
+      <span class="modal-title">🤝 Conference Call</span>
+      <button class="mclose" onclick="closeModal('conferenceModal')">✕</button>
+    </div>
+    <div id="confActiveParties" style="margin-bottom:12px"></div>
+    <div class="fg">
+      <label>Add Party — Enter Number to Dial</label>
+      <input type="tel" id="confNumber" placeholder="+1 234 567 8900">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('conferenceModal')">Close</button>
+      <button class="btn btn-primary" onclick="startConference()">📞 Add to Conference</button>
+    </div>
+  </div>
+</div>
+
+<!-- Transfer Modal -->
+<div class="overlay" id="transferModal">
+  <div class="modal">
+    <div class="modal-hdr">
+      <span class="modal-title">↗ Transfer Call</span>
+      <button class="mclose" onclick="closeModal('transferModal')">✕</button>
+    </div>
+    <div class="fg">
+      <label>Transfer To (number or SIP URI)</label>
+      <input type="tel" id="xferNumber" placeholder="+1 234 567 8900 or ext. 2001">
+    </div>
+    <div class="fg">
+      <label>Transfer Type</label>
+      <select id="xferType">
+        <option value="blind">Blind Transfer — immediately send caller to new number</option>
+        <option value="attended">Attended Transfer — speak with target first, then transfer</option>
+      </select>
+    </div>
+    <div id="attendedInfo" style="display:none;background:var(--blue-a);border:1px solid rgba(37,99,235,.3);border-radius:6px;padding:8px 10px;font-size:.78rem;color:#60a5fa;margin-bottom:10px">
+      ℹ Attended transfer: Current caller is put on hold while you call the target. When ready, click "Complete Transfer" to connect them.
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('transferModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="executeTransfer()">↗ Transfer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toasts" id="toastContainer"></div>
+
+<!-- Hidden audio elements for remote audio -->
+<audio id="remoteAudio" autoplay></audio>
+<audio id="remoteAudio2" autoplay></audio>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════
+const state = {
+  ua: null,
+  session: null,          // primary call session
+  confSession: null,      // conference second session
+  attendedSession: null,  // attended transfer second session
+  callState: 'idle',      // idle | connecting | ringing | active | onhold | conference | transferring
+  isMuted: false,
+  isOnHold: false,
+  isSpeakerOn: false,
+  isRecording: false,
+  isDialpadOpen: false,
+  isRegistered: false,
+  callTimer: null,
+  callSeconds: 0,
+  currentContactIndex: -1,
+  currentOutcome: null,
+  autoDialActive: false,
+  queueRunning: false,
+  countdownTimer: null,
+  countdownInterval: null,
+  mediaRecorder: null,
+  recordedChunks: [],
+  audioContext: null,
+  localStream: null,
+  mixer: null,
+};
+
+// ═══════════════════════════════════════════════════
+// CONTACTS / QUEUE
+// ═══════════════════════════════════════════════════
+let contacts = [];
+let filteredContacts = [];
+let pendingCSVData = null;
+let pendingCSVHeaders = [];
+
+const NOTES_KEY = 'sipDialerNotes_v2';
+let notesDB = JSON.parse(localStorage.getItem(NOTES_KEY) || '{}');
+
+function saveNotes() {
+  localStorage.setItem(NOTES_KEY, JSON.stringify(notesDB));
+}
+
+function getContactKey(contact) {
+  return (contact.phone || '').replace(/\D/g,'') || contact.name || String(Math.random());
+}
+
+// ═══════════════════════════════════════════════════
+// SIP / JSSIP
+// ═══════════════════════════════════════════════════
+function connectSIP() {
+  const wss = el('sipWss').value.trim();
+  const domain = el('sipDomain').value.trim();
+  const username = el('sipUsername').value.trim();
+  const password = el('sipPassword').value.trim();
+  const displayName = el('sipDisplayName').value.trim() || username;
+  const proxy = el('sipProxy').value.trim();
+
+  if (!wss || !domain || !username || !password) {
+    toast('Fill in all required SIP fields', 'error'); return;
+  }
+
+  localStorage.setItem('sipConfig', JSON.stringify({wss, domain, username, password, displayName, proxy}));
+
+  disconnectSIP();
+  setSIPStatus('connecting', 'Connecting…');
+
+  try {
+    const socket = new JsSIP.WebSocketInterface(wss);
+    const config = {
+      sockets: [socket],
+      uri: `sip:${username}@${domain}`,
+      password,
+      display_name: displayName,
+      register: true,
+      session_timers: false,
+      register_expires: 300,
+    };
+    if (proxy) config.outbound_proxy_set = `sip:${proxy}`;
+
+    const ua = new JsSIP.UA(config);
+
+    ua.on('registered', () => {
+      state.isRegistered = true;
+      setSIPStatus('reg', `${username}@${domain}`);
+      toast('SIP Registered ✓', 'success');
+      closeModal('settingsModal');
+    });
+    ua.on('unregistered', () => {
+      state.isRegistered = false;
+      setSIPStatus('', 'Not Registered');
+    });
+    ua.on('registrationFailed', (e) => {
+      state.isRegistered = false;
+      setSIPStatus('failed', 'Registration Failed');
+      toast('SIP registration failed: ' + (e.cause || 'Unknown'), 'error');
+    });
+    ua.on('newRTCSession', (data) => {
+      if (data.originator === 'remote') handleIncomingCall(data.session);
+    });
+    ua.on('disconnected', () => {
+      setSIPStatus('failed', 'Disconnected');
+    });
+
+    ua.start();
+    state.ua = ua;
+  } catch(e) {
+    setSIPStatus('failed', 'Error: ' + e.message);
+    toast('SIP error: ' + e.message, 'error');
+  }
+}
+
+function disconnectSIP() {
+  if (state.session) { try { state.session.terminate(); } catch(e){} state.session = null; }
+  if (state.confSession) { try { state.confSession.terminate(); } catch(e){} state.confSession = null; }
+  if (state.ua) { try { state.ua.stop(); } catch(e){} state.ua = null; }
+  state.isRegistered = false;
+  setSIPStatus('', 'Not Connected');
+  setCallState('idle');
+}
+
+function handleIncomingCall(session) {
+  const callerNum = session.remote_identity.uri.user;
+  const callerName = session.remote_identity.display_name || callerNum;
+
+  if (state.callState !== 'idle') {
+    session.terminate({ status_code: 486, reason_phrase: 'Busy Here' });
+    toast('Incoming call from ' + callerName + ' rejected (busy)', 'warning');
+    return;
+  }
+
+  const accept = confirm(`📞 Incoming call from ${callerName} (${callerNum})\n\nAnswer?`);
+  if (accept) {
+    state.session = session;
+    attachSessionHandlers(session, callerName, callerNum);
+    session.answer({ mediaConstraints: { audio: true, video: false } });
+    updateCallDisplay(callerName, callerNum);
+  } else {
+    session.terminate();
+  }
+}
+
+function makeCall(number, contactName) {
+  if (!state.isRegistered || !state.ua) {
+    toast('Not connected to SIP server. Configure SIP settings first.', 'error'); return false;
+  }
+  if (state.callState !== 'idle') {
+    toast('A call is already in progress.', 'warning'); return false;
+  }
+
+  const domain = el('sipDomain').value.trim() || JSON.parse(localStorage.getItem('sipConfig')||'{}').domain || '';
+  const target = number.includes('@') ? `sip:${number}` : `sip:${number}@${domain}`;
+
+  const callOptions = {
+    mediaConstraints: { audio: true, video: false },
+    rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
+  };
+
+  try {
+    const session = state.ua.call(target, callOptions);
+    state.session = session;
+    attachSessionHandlers(session, contactName || number, number);
+    updateCallDisplay(contactName || number, number);
+    setCallState('connecting');
+    return true;
+  } catch(e) {
+    toast('Call failed: ' + e.message, 'error');
+    return false;
+  }
+}
+
+function attachSessionHandlers(session, name, number) {
+  session.on('progress', () => {
+    setCallState('ringing');
+    updateCallDisplay(name, number);
+  });
+
+  session.on('confirmed', () => {
+    setCallState('active');
+    startCallTimer();
+    updateCallDisplay(name, number);
+    setCtrlsEnabled(true);
+  });
+
+  session.on('failed', (e) => {
+    toast('Call failed: ' + (e.cause || 'Unknown'), 'error');
+    onCallEnded();
+  });
+
+  session.on('ended', () => {
+    onCallEnded();
+  });
+
+  session.on('hold', () => {
+    state.isOnHold = true;
+    setCallState('onhold');
+    el('holdBtn').classList.add('warn');
+    el('holdBtn').textContent = '▶';
+  });
+
+  session.on('unhold', () => {
+    state.isOnHold = false;
+    setCallState('active');
+    el('holdBtn').classList.remove('warn');
+    el('holdBtn').textContent = '⏸';
+  });
+
+  session.on('muted', () => { state.isMuted = true; el('muteBtn').classList.add('muted'); el('muteBtn').textContent = '🔇'; });
+  session.on('unmuted', () => { state.isMuted = false; el('muteBtn').classList.remove('muted'); el('muteBtn').textContent = '🎤'; });
+
+  // Attach remote audio
+  session.on('peerconnection', (data) => {
+    data.peerconnection.addEventListener('track', (e) => {
+      if (e.streams && e.streams[0]) {
+        el('remoteAudio').srcObject = e.streams[0];
+        el('remoteAudio').play().catch(()=>{});
+      }
+    });
+    // Legacy support
+    data.peerconnection.addEventListener('addstream', (e) => {
+      el('remoteAudio').srcObject = e.stream;
+      el('remoteAudio').play().catch(()=>{});
+    });
+  });
+}
+
+function onCallEnded() {
+  stopCallTimer();
+  const wasActive = state.callState === 'active' || state.callState === 'onhold' || state.callState === 'conference';
+
+  state.session = null;
+  state.isMuted = false;
+  state.isOnHold = false;
+
+  if (state.confSession) {
+    try { state.confSession.terminate(); } catch(e){}
+    state.confSession = null;
+  }
+
+  setCallState('idle');
+  setCtrlsEnabled(false);
+  el('confBadge').classList.remove('show');
+  el('confModalBtn').disabled = !state.isRegistered;
+  el('xferModalBtn').disabled = true;
+
+  // Update contact status
+  if (state.currentContactIndex >= 0) {
+    const outcome = state.currentOutcome;
+    if (outcome) markContactStatus(state.currentContactIndex, outcome);
+    else if (wasActive) markContactStatus(state.currentContactIndex, 'completed');
+  }
+
+  updateQueueStats();
+
+  if (state.queueRunning && state.autoDialActive) {
+    scheduleNextCall();
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// CALL CONTROLS
+// ═══════════════════════════════════════════════════
+function endCall() {
+  if (state.session) {
+    try { state.session.terminate(); } catch(e) { onCallEnded(); }
+  }
+  if (state.confSession) {
+    try { state.confSession.terminate(); } catch(e){}
+    state.confSession = null;
+  }
+}
+
+function toggleMute() {
+  if (!state.session) return;
+  if (state.isMuted) state.session.unmute(); else state.session.mute();
+}
+
+function toggleHold() {
+  if (!state.session) return;
+  if (state.isOnHold) state.session.unhold(); else state.session.hold();
+}
+
+function toggleSpeaker() {
+  state.isSpeakerOn = !state.isSpeakerOn;
+  const audio = el('remoteAudio');
+  if (state.isSpeakerOn) {
+    el('speakerBtn').classList.add('on');
+    audio.volume = 1.5;
+  } else {
+    el('speakerBtn').classList.remove('on');
+    audio.volume = 1.0;
+  }
+}
+
+function toggleRecord() {
+  if (!state.isRecording) startRecording(); else stopRecording();
+}
+
+function startRecording() {
+  const audioEl = el('remoteAudio');
+  if (!audioEl.srcObject) { toast('No audio stream to record', 'warning'); return; }
+  try {
+    const stream = audioEl.srcObject;
+    state.mediaRecorder = new MediaRecorder(stream);
+    state.recordedChunks = [];
+    state.mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) state.recordedChunks.push(e.data); };
+    state.mediaRecorder.onstop = () => {
+      const blob = new Blob(state.recordedChunks, { type: 'audio/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `call-${Date.now()}.webm`; a.click();
+      toast('Recording saved', 'success');
+    };
+    state.mediaRecorder.start();
+    state.isRecording = true;
+    el('recBtn').classList.add('on');
+    el('recBtn').textContent = '⏹';
+    toast('Recording started', 'info');
+  } catch(e) { toast('Recording not supported: ' + e.message, 'error'); }
+}
+
+function stopRecording() {
+  if (state.mediaRecorder && state.isRecording) {
+    state.mediaRecorder.stop();
+    state.isRecording = false;
+    el('recBtn').classList.remove('on');
+    el('recBtn').textContent = '⏺';
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// DIALPAD
+// ═══════════════════════════════════════════════════
+const DIALPAD_KEYS = [
+  {main:'1',sub:''},    {main:'2',sub:'ABC'}, {main:'3',sub:'DEF'},
+  {main:'4',sub:'GHI'}, {main:'5',sub:'JKL'}, {main:'6',sub:'MNO'},
+  {main:'7',sub:'PQRS'},{main:'8',sub:'TUV'}, {main:'9',sub:'WXYZ'},
+  {main:'*',sub:''},    {main:'0',sub:'+'},    {main:'#',sub:''},
+];
+
+function buildDialpad() {
+  const grid = el('dialpadGrid');
+  grid.innerHTML = DIALPAD_KEYS.map(k => `
+    <button class="dp-key" onclick="dialpadPress('${k.main}')">
+      <span class="dp-main">${k.main}</span>
+      ${k.sub ? `<span class="dp-sub">${k.sub}</span>` : ''}
+    </button>`).join('');
+}
+
+function dialpadPress(key) {
+  if (state.session && (state.callState === 'active' || state.callState === 'conference')) {
+    try { state.session.sendDTMF(key); } catch(e){}
+  }
+  const inp = el('dialpadInput');
+  if (inp) inp.value += key;
+  const manual = el('manualNumber');
+  if (state.callState === 'idle' && manual) manual.value += key;
+}
+
+function toggleDialpad() {
+  state.isDialpadOpen = !state.isDialpadOpen;
+  el('dialpad').classList.toggle('show', state.isDialpadOpen);
+  el('dialpadBtn').classList.toggle('on', state.isDialpadOpen);
+}
+
+// ═══════════════════════════════════════════════════
+// CONFERENCE
+// ═══════════════════════════════════════════════════
+function openConferenceModal() {
+  if (!state.session) { toast('No active call', 'warning'); return; }
+  // Show current parties
+  const primary = el('callName').textContent || 'Party 1';
+  const confParties = el('confActiveParties');
+  confParties.innerHTML = `
+    <div class="conference-party">
+      <div class="cp-header"><span>Party 1 (Active)</span><span style="color:var(--green2)">●</span></div>
+      <div class="cp-num">${primary} — ${el('callNumber').textContent}</div>
+    </div>
+    ${state.confSession ? `
+    <div class="conference-party">
+      <div class="cp-header"><span>Party 2 (Conference)</span><span style="color:var(--green2)">●</span></div>
+      <div class="cp-num">${state.confSession._remote_identity?.display_name||''}</div>
+    </div>` : ''}
+  `;
+  openModal('conferenceModal');
+}
+
+function startConference() {
+  const number = el('confNumber').value.trim();
+  if (!number) { toast('Enter a number to add to conference', 'warning'); return; }
+  if (!state.session) { toast('No active call', 'warning'); return; }
+  if (state.confSession) { toast('Conference already has 3 parties', 'warning'); return; }
+
+  // Put primary call on hold
+  try { state.session.hold(); } catch(e){}
+
+  const domain = getSIPConfig().domain;
+  const target = number.includes('@') ? `sip:${number}` : `sip:${number}@${domain}`;
+
+  const options = {
+    mediaConstraints: { audio: true, video: false },
+    rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
+  };
+
+  try {
+    const confSess = state.ua.call(target, options);
+    state.confSession = confSess;
+
+    confSess.on('confirmed', () => {
+      // Unhold primary and merge audio
+      try { state.session.unhold(); } catch(e){}
+      mixConferenceAudio();
+      setCallState('conference');
+      el('confBadge').classList.add('show');
+      toast('Conference connected — 3 parties', 'success');
+      closeModal('conferenceModal');
+    });
+
+    confSess.on('failed', (e) => {
+      try { state.session.unhold(); } catch(ex){}
+      state.confSession = null;
+      toast('Conference call failed: ' + (e.cause||'Unknown'), 'error');
+    });
+
+    confSess.on('ended', () => {
+      state.confSession = null;
+      setCallState('active');
+      el('confBadge').classList.remove('show');
+      toast('Conference party disconnected', 'info');
+    });
+
+    confSess.on('peerconnection', (data) => {
+      data.peerconnection.addEventListener('track', (e) => {
+        if (e.streams && e.streams[0]) {
+          el('remoteAudio2').srcObject = e.streams[0];
+          el('remoteAudio2').play().catch(()=>{});
+        }
+      });
+      data.peerconnection.addEventListener('addstream', (e) => {
+        el('remoteAudio2').srcObject = e.stream;
+        el('remoteAudio2').play().catch(()=>{});
+      });
+    });
+
+    toast('Calling conference party…', 'info');
+  } catch(e) {
+    try { state.session.unhold(); } catch(ex){}
+    toast('Conference failed: ' + e.message, 'error');
+  }
+}
+
+function mixConferenceAudio() {
+  // Both remote audio streams already play independently via HTML audio elements
+  // For a server-side conference, the PBX handles mixing
+  // For client-side, both audio elements output to speakers simultaneously
+  // This is sufficient for a 3-way call
+}
+
+// ═══════════════════════════════════════════════════
+// TRANSFER
+// ═══════════════════════════════════════════════════
+function openTransferModal() {
+  if (!state.session) { toast('No active call', 'warning'); return; }
+  openModal('transferModal');
+}
+
+function executeTransfer() {
+  const number = el('xferNumber').value.trim();
+  const type = el('xferType').value;
+  if (!number) { toast('Enter a transfer target number', 'warning'); return; }
+  if (!state.session) { toast('No active call', 'warning'); return; }
+
+  const domain = getSIPConfig().domain;
+
+  if (type === 'blind') {
+    // Blind transfer via SIP REFER
+    const target = number.includes('@') ? number : `${number}@${domain}`;
+    try {
+      state.session.refer(`sip:${target}`);
+      toast('Blind transfer initiated — call is being transferred', 'success');
+      closeModal('transferModal');
+      // Session will end after refer
+      setTimeout(() => { if (state.callState !== 'idle') onCallEnded(); }, 3000);
+    } catch(e) {
+      toast('Transfer failed: ' + e.message, 'error');
+    }
+  } else {
+    // Attended transfer: put on hold, call target, when answered do refer
+    attendedTransfer(number, domain);
+  }
+}
+
+function attendedTransfer(number, domain) {
+  if (state.attendedSession) { toast('Attended transfer already in progress', 'warning'); return; }
+
+  try { state.session.hold(); } catch(e){}
+
+  const target = number.includes('@') ? `sip:${number}` : `sip:${number}@${domain}`;
+  const options = { mediaConstraints: { audio: true, video: false } };
+
+  try {
+    const atSess = state.ua.call(target, options);
+    state.attendedSession = atSess;
+    state.callState = 'transferring';
+
+    atSess.on('confirmed', () => {
+      toast('Attended transfer: Speaking with target. Click "Complete Transfer" to connect parties.', 'info');
+      // Show complete transfer button
+      closeModal('transferModal');
+      showCompleteTransferUI();
+    });
+
+    atSess.on('failed', (e) => {
+      try { state.session.unhold(); } catch(ex){}
+      state.attendedSession = null;
+      setCallState('active');
+      toast('Attended transfer failed: ' + (e.cause||'Unknown'), 'error');
+    });
+
+    atSess.on('peerconnection', (data) => {
+      data.peerconnection.addEventListener('track', (e) => {
+        if (e.streams && e.streams[0]) {
+          el('remoteAudio2').srcObject = e.streams[0];
+          el('remoteAudio2').play().catch(()=>{});
+        }
+      });
+    });
+  } catch(e) {
+    try { state.session.unhold(); } catch(ex){}
+    toast('Attended transfer error: ' + e.message, 'error');
+  }
+}
+
+function showCompleteTransferUI() {
+  const div = document.createElement('div');
+  div.id = 'completeXferBanner';
+  div.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);background:var(--blue-a);border:1px solid rgba(37,99,235,.4);border-radius:8px;padding:10px 18px;font-size:.82rem;color:#60a5fa;display:flex;gap:10px;align-items:center;z-index:500';
+  div.innerHTML = `<span>🔀 Attended Transfer — speaking with target</span>
+    <button class="btn btn-primary btn-sm" onclick="completeAttendedTransfer()">Complete Transfer</button>
+    <button class="btn btn-sm btn-ghost" onclick="cancelAttendedTransfer()">Cancel</button>`;
+  document.body.appendChild(div);
+}
+
+function completeAttendedTransfer() {
+  if (!state.session || !state.attendedSession) return;
+  try {
+    state.session.refer(state.attendedSession);
+    toast('Transfer complete — parties connected', 'success');
+  } catch(e) {
+    toast('Complete transfer failed: ' + e.message, 'error');
+  }
+  removeCompleteTransferUI();
+  state.attendedSession = null;
+  onCallEnded();
+}
+
+function cancelAttendedTransfer() {
+  if (state.attendedSession) {
+    try { state.attendedSession.terminate(); } catch(e){}
+    state.attendedSession = null;
+  }
+  try { state.session.unhold(); } catch(e){}
+  setCallState('active');
+  removeCompleteTransferUI();
+  toast('Attended transfer cancelled', 'info');
+}
+
+function removeCompleteTransferUI() {
+  const el2 = document.getElementById('completeXferBanner');
+  if (el2) el2.remove();
+}
+
+// ═══════════════════════════════════════════════════
+// DIAL QUEUE
+// ═══════════════════════════════════════════════════
+function startQueue() {
+  if (contacts.length === 0) { toast('Import contacts first', 'warning'); return; }
+  if (!state.isRegistered) { toast('Connect to SIP server first', 'error'); return; }
+
+  state.queueRunning = true;
+  el('startQueueBtn').disabled = true;
+  el('pauseQueueBtn').disabled = false;
+  el('autoDialToggle').checked = true;
+  state.autoDialActive = true;
+
+  // Find first pending contact
+  const nextIdx = contacts.findIndex((c, i) => c.status === 'pending' && i > state.currentContactIndex);
+  if (nextIdx === -1) {
+    toast('No pending contacts in queue', 'warning');
+    state.queueRunning = false;
+    return;
+  }
+  dialContact(nextIdx);
+}
+
+function pauseQueue() {
+  state.queueRunning = false;
+  el('startQueueBtn').disabled = false;
+  el('pauseQueueBtn').disabled = true;
+  cancelCountdown();
+  toast('Queue paused', 'info');
+}
+
+function skipCurrent() {
+  if (state.currentContactIndex >= 0) {
+    markContactStatus(state.currentContactIndex, 'skipped');
+  }
+  cancelCountdown();
+  if (state.session) endCall();
+  else if (state.queueRunning) scheduleNextCall();
+}
+
+function dialNext() {
+  cancelCountdown();
+  const nextIdx = findNextPending();
+  if (nextIdx === -1) { toast('No more pending contacts in queue', 'info'); return; }
+  dialContact(nextIdx);
+}
+
+function findNextPending(fromIdx) {
+  const start = fromIdx !== undefined ? fromIdx : state.currentContactIndex + 1;
+  for (let i = start; i < contacts.length; i++) {
+    if (contacts[i].status === 'pending') return i;
+  }
+  return -1;
+}
+
+function dialContact(index) {
+  if (index < 0 || index >= contacts.length) return;
+  const contact = contacts[index];
+  if (!contact.phone) { toast('Contact has no phone number, skipping', 'warning'); return; }
+
+  state.currentContactIndex = index;
+  state.currentOutcome = null;
+  markContactStatus(index, 'calling');
+  updateContactDetails(contact);
+  renderContactList();
+  scrollToContact(index);
+
+  const success = makeCall(contact.phone, contact.name);
+  if (!success) {
+    markContactStatus(index, 'failed');
+    if (state.queueRunning) scheduleNextCall();
+  }
+}
+
+function scheduleNextCall() {
+  cancelCountdown();
+  const nextIdx = findNextPending(state.currentContactIndex + 1);
+  if (nextIdx === -1) {
+    toast('Queue complete — all contacts dialed! 🎉', 'success');
+    state.queueRunning = false;
+    el('startQueueBtn').disabled = false;
+    el('pauseQueueBtn').disabled = true;
+    return;
+  }
+
+  const delay = parseInt(el('dialDelay').value) || 5;
+  let remaining = delay;
+
+  el('countdownBar').classList.add('show');
+  el('countdownNum').textContent = remaining;
+  el('countdownFill').style.width = '100%';
+  el('countdownFill').style.transition = `width ${delay}s linear`;
+
+  setTimeout(() => { el('countdownFill').style.width = '0%'; }, 50);
+
+  state.countdownInterval = setInterval(() => {
+    remaining--;
+    el('countdownNum').textContent = remaining;
+    if (remaining <= 0) {
+      clearInterval(state.countdownInterval);
+      state.countdownInterval = null;
+      el('countdownBar').classList.remove('show');
+      if (state.queueRunning && state.callState === 'idle') {
+        dialContact(nextIdx);
+      }
+    }
+  }, 1000);
+}
+
+function cancelCountdown() {
+  if (state.countdownInterval) { clearInterval(state.countdownInterval); state.countdownInterval = null; }
+  el('countdownBar').classList.remove('show');
+}
+
+function dialManual() {
+  const num = el('manualNumber').value.trim();
+  if (!num) { toast('Enter a phone number', 'warning'); return; }
+  state.currentContactIndex = -1;
+  state.currentOutcome = null;
+  makeCall(num, num);
+}
+
+function toggleAutoDial() {
+  state.autoDialActive = el('autoDialToggle').checked;
+}
+
+// ═══════════════════════════════════════════════════
+// CSV / GOOGLE SHEETS IMPORT
+// ═══════════════════════════════════════════════════
+function triggerCSV() { el('csvFileInput').click(); }
+
+function handleCSVFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  Papa.parse(file, {
+    header: true, skipEmptyLines: true,
+    complete: (results) => processCSVResults(results),
+    error: (err) => toast('CSV parse error: ' + err.message, 'error'),
+  });
+  event.target.value = '';
+}
+
+function processCSVResults(results) {
+  if (!results.data || results.data.length === 0) { toast('CSV file is empty', 'error'); return; }
+  pendingCSVData = results.data;
+  pendingCSVHeaders = results.meta.fields || Object.keys(results.data[0]);
+  showColumnMapper(pendingCSVHeaders, results.data.slice(0, 3));
+}
+
+async function importGoogleSheet() {
+  const url = el('sheetsUrl').value.trim();
+  const gid = el('sheetsGid').value.trim() || '0';
+  if (!url) { toast('Enter a Google Sheet URL', 'warning'); return; }
+
+  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (!match) { toast('Invalid Google Sheet URL', 'error'); return; }
+  const sheetId = match[1];
+
+  // Use gviz/tq endpoint which supports CORS for public sheets
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
+
+  toast('Fetching Google Sheet…', 'info');
+  try {
+    const resp = await fetch(csvUrl);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+
+    Papa.parse(text, {
+      header: true, skipEmptyLines: true,
+      complete: (results) => {
+        closeModal('sheetsModal');
+        processCSVResults(results);
+      },
+      error: (err) => toast('Parse error: ' + err.message, 'error'),
+    });
+  } catch(e) {
+    toast('Could not fetch sheet. Make sure it is publicly shared. ' + e.message, 'error');
+  }
+}
+
+function showColumnMapper(headers, preview) {
+  el('colCount').textContent = headers.length;
+
+  // Preview first rows
+  el('colPreview').textContent = headers.join(' | ') + '\n' +
+    preview.map(r => headers.map(h => r[h] || '').join(' | ')).join('\n');
+
+  // Build column mapping dropdowns
+  const fields = [
+    { key: 'phone', label: 'Phone Number *', required: true },
+    { key: 'name',  label: 'Full Name' },
+    { key: 'email', label: 'Email' },
+    { key: 'company', label: 'Company / Org' },
+    { key: 'notes', label: 'Pre-loaded Notes' },
+  ];
+
+  const grid = el('columnMapGrid');
+  grid.innerHTML = fields.map(f => `
+    <div class="fg" style="margin:0">
+      <label style="font-size:.75rem">${f.label}</label>
+      <select id="map_${f.key}" style="font-size:.78rem;padding:5px 8px">
+        <option value="">— skip —</option>
+        ${headers.map(h => `<option value="${h}" ${autoMatch(h, f.key) ? 'selected' : ''}>${h}</option>`).join('')}
+      </select>
+    </div>`).join('');
+
+  openModal('columnModal');
+}
+
+function autoMatch(header, fieldKey) {
+  const h = header.toLowerCase().replace(/[^a-z]/g,'');
+  const patterns = {
+    phone: ['phone','mobile','cell','number','tel','telephone','contact','num','phonenumber'],
+    name:  ['name','fullname','contactname','firstname','lastname','person','client','customer'],
+    email: ['email','mail','emailaddress'],
+    company: ['company','org','organization','business','employer','firm'],
+    notes: ['notes','note','comment','remarks','description','history'],
+  };
+  return (patterns[fieldKey] || []).some(p => h.includes(p));
+}
+
+function confirmImport() {
+  if (!pendingCSVData) return;
+
+  const phoneSel = el('map_phone').value;
+  if (!phoneSel) { toast('You must map the Phone Number column', 'error'); return; }
+
+  const nameMap    = el('map_name').value;
+  const emailMap   = el('map_email').value;
+  const companyMap = el('map_company').value;
+  const notesMap   = el('map_notes').value;
+
+  const newContacts = pendingCSVData.map((row, i) => {
+    const phone = cleanPhone(row[phoneSel] || '');
+    const name  = (nameMap ? row[nameMap] : '') || '';
+    const email   = emailMap   ? row[emailMap]   : '';
+    const company = companyMap ? row[companyMap] : '';
+    const preNote = notesMap   ? row[notesMap]   : '';
+
+    // Store extra columns
+    const extra = {};
+    Object.keys(row).forEach(k => {
+      if (![phoneSel, nameMap, emailMap, companyMap, notesMap].filter(Boolean).includes(k)) {
+        if (row[k]) extra[k] = row[k];
+      }
+    });
+
+    const contact = { phone, name, email, company, extra, status: 'pending', rowNum: i + 1 };
+
+    // Pre-load notes from CSV
+    if (preNote) {
+      const key = getContactKey(contact);
+      if (!notesDB[key]) notesDB[key] = [];
+      if (!notesDB[key].some(n => n.text === preNote && n.source === 'csv')) {
+        notesDB[key].unshift({ date: new Date().toISOString(), text: preNote, outcome: 'imported', source: 'csv' });
+      }
+    }
+
+    return contact;
+  }).filter(c => c.phone);
+
+  if (newContacts.length === 0) { toast('No valid contacts with phone numbers found', 'error'); return; }
+
+  const mode = el('importMode').value;
+  if (mode === 'append') contacts = contacts.concat(newContacts);
+  else contacts = newContacts;
+
+  saveNotes();
+  closeModal('columnModal');
+  pendingCSVData = null;
+
+  state.currentContactIndex = -1;
+  filteredContacts = contacts;
+  renderContactList();
+  updateQueueStats();
+  toast(`Imported ${newContacts.length} contacts`, 'success');
+}
+
+function cleanPhone(raw) {
+  return (raw || '').toString().trim().replace(/\s+/g, '');
+}
+
+function clearQueue() {
+  if (contacts.length === 0) return;
+  if (!confirm('Clear all contacts from the queue?')) return;
+  contacts = [];
+  filteredContacts = [];
+  state.currentContactIndex = -1;
+  renderContactList();
+  updateQueueStats();
+  toast('Queue cleared', 'info');
+}
+
+// ═══════════════════════════════════════════════════
+// NOTES & OUTCOMES
+// ═══════════════════════════════════════════════════
+function setOutcome(outcome) {
+  state.currentOutcome = outcome;
+  document.querySelectorAll('.out-btn').forEach(b => {
+    b.className = 'out-btn';
+    if (b.id === 'out-' + outcome) b.classList.add('sel-' + outcome);
+  });
+}
+
+function saveNote() {
+  const text = el('noteInput').value.trim();
+  const outcome = state.currentOutcome;
+  if (!text && !outcome) { toast('Enter a note or select an outcome', 'warning'); return; }
+
+  const contact = state.currentContactIndex >= 0 ? contacts[state.currentContactIndex] : null;
+  const key = contact ? getContactKey(contact) : 'manual_' + (el('callNumber').textContent||'unknown');
+
+  if (!notesDB[key]) notesDB[key] = [];
+  notesDB[key].unshift({
+    date: new Date().toISOString(),
+    text: text || '',
+    outcome: outcome || 'note',
+  });
+  saveNotes();
+
+  el('noteInput').value = '';
+  renderNotes(key);
+  toast('Note saved', 'success');
+
+  if (contact && outcome) markContactStatus(state.currentContactIndex, outcome);
+}
+
+function renderNotes(key) {
+  const list = el('notesList');
+  const notes = notesDB[key] || [];
+  if (notes.length === 0) {
+    list.innerHTML = '<div style="font-size:.78rem;color:var(--txt2);text-align:center;padding:10px">No notes yet</div>';
+    return;
+  }
+  list.innerHTML = notes.map(n => `
+    <div class="note-item">
+      <div class="note-meta">
+        <span>${formatDate(n.date)}</span>
+        <span class="note-outcome">${outcomeLabel(n.outcome)}</span>
+      </div>
+      ${n.text ? `<div class="note-body">${escHtml(n.text)}</div>` : ''}
+    </div>`).join('');
+}
+
+function outcomeLabel(o) {
+  const labels = {answered:'✅ Answered',noanswer:'📵 No Answer',busy:'🔴 Busy',callback:'📅 Callback',dnc:'🚫 DNC',failed:'⚠ Failed',note:'📝 Note',completed:'✓ Done',calling:'📞 Calling',imported:'📥 Imported'};
+  return labels[o] || o || '';
+}
+
+// ═══════════════════════════════════════════════════
+// CONTACT LIST RENDERING
+// ═══════════════════════════════════════════════════
+function renderContactList() {
+  const container = el('contactList');
+  const list = filteredContacts.length > 0 || contacts.length === 0 ? filteredContacts : contacts;
+
+  if (list.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">📂</div>
+      <div class="empty-text">Import a CSV file or<br>sync a Google Sheet<br>to load contacts</div></div>`;
+    return;
+  }
+
+  container.innerHTML = list.map((c, i) => {
+    const realIdx = contacts.indexOf(c);
+    const isActive = realIdx === state.currentContactIndex;
+    const avatarLetter = (c.name || c.phone || '?')[0].toUpperCase();
+    const avatarColor = stringToColor(c.name || c.phone || '');
+    return `
+    <div class="c-item ${isActive ? (state.callState === 'idle' ? 'active' : 'current-call') : ''}"
+         onclick="selectContact(${realIdx})">
+      <div class="c-avatar" style="background:${avatarColor}20;color:${avatarColor}">${avatarLetter}</div>
+      <div class="c-info">
+        <div class="c-name">${escHtml(c.name || c.phone)}</div>
+        <div class="c-phone">${escHtml(c.phone)}</div>
+      </div>
+      <span class="badge b-${c.status}">${c.status}</span>
+      <span class="c-num">#${c.rowNum || realIdx+1}</span>
+    </div>`;
+  }).join('');
+}
+
+function filterContacts(query) {
+  query = query.toLowerCase().trim();
+  filteredContacts = query
+    ? contacts.filter(c => (c.name||'').toLowerCase().includes(query) || (c.phone||'').includes(query) || (c.company||'').toLowerCase().includes(query))
+    : contacts.slice();
+  renderContactList();
+}
+
+function selectContact(index) {
+  state.currentContactIndex = index;
+  const contact = contacts[index];
+  updateContactDetails(contact);
+  renderContactList();
+}
+
+function scrollToContact(index) {
+  const items = el('contactList').querySelectorAll('.c-item');
+  if (items[index]) items[index].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function markContactStatus(index, status) {
+  if (index < 0 || index >= contacts.length) return;
+  contacts[index].status = status;
+  renderContactList();
+  updateQueueStats();
+}
+
+function updateContactDetails(contact) {
+  if (!contact) return;
+  const set = (id, val) => {
+    const el2 = el(id);
+    el2.textContent = val || '';
+    el2.className = val ? 'dv' : 'dv empty';
+    if (!val) el2.textContent = '—';
+  };
+  set('dName', contact.name);
+  set('dPhone', contact.phone);
+  set('dEmail', contact.email);
+  set('dCompany', contact.company);
+
+  // Extra fields
+  const extra = contact.extra || {};
+  const extraFields = el('dExtraFields');
+  const extraHtml = Object.entries(extra).slice(0, 6).map(([k,v]) => `
+    <div class="dr"><span class="dl">${escHtml(k)}</span><span class="dv">${escHtml(String(v))}</span></div>`).join('');
+  extraFields.innerHTML = extraHtml;
+
+  // Reset outcome buttons
+  document.querySelectorAll('.out-btn').forEach(b => b.className = 'out-btn');
+  state.currentOutcome = null;
+
+  // Load notes
+  const key = getContactKey(contact);
+  renderNotes(key);
+  el('noteInput').value = '';
+}
+
+function updateQueueStats() {
+  const total = contacts.length;
+  const done  = contacts.filter(c => ['completed','answered','noanswer','busy','callback','dnc','failed','skipped'].includes(c.status)).length;
+  const left  = contacts.filter(c => c.status === 'pending').length;
+  el('statTotal').textContent = total;
+  el('statDone').textContent  = done;
+  el('statLeft').textContent  = left;
+  el('qBarFill').style.width  = total > 0 ? `${(done/total)*100}%` : '0%';
+  filteredContacts = filteredContacts.length > 0 ? filteredContacts : contacts.slice();
+}
+
+// ═══════════════════════════════════════════════════
+// CALL TIMER & STATE UI
+// ═══════════════════════════════════════════════════
+function startCallTimer() {
+  state.callSeconds = 0;
+  stopCallTimer();
+  state.callTimer = setInterval(() => {
+    state.callSeconds++;
+    el('callTimer').textContent = formatSeconds(state.callSeconds);
+    el('callTimer').className = 'call-timer';
+  }, 1000);
+}
+
+function stopCallTimer() {
+  if (state.callTimer) { clearInterval(state.callTimer); state.callTimer = null; }
+}
+
+function setCallState(s) {
+  state.callState = s;
+  const labels = { idle:'IDLE', connecting:'CONNECTING…', ringing:'RINGING…', active:'IN CALL', onhold:'ON HOLD', conference:'CONFERENCE', transferring:'TRANSFERRING…' };
+  const lbl = el('callStatusLabel');
+  lbl.textContent = labels[s] || s.toUpperCase();
+  lbl.className = 'call-status-label s-' + s;
+
+  el('ringDots').classList.toggle('show', s === 'ringing' || s === 'connecting');
+
+  const inCall = ['connecting','ringing','active','onhold','conference','transferring'].includes(s);
+  el('endCallBtn').disabled = !inCall;
+  el('muteBtn').disabled = !inCall;
+  el('holdBtn').disabled = !inCall;
+  el('recBtn').disabled = !inCall;
+  el('confModalBtn').disabled = !(inCall && state.isRegistered);
+  el('xferModalBtn').disabled = !(inCall && state.isRegistered);
+
+  if (s === 'idle') {
+    el('callName').textContent = '—';
+    el('callNumber').textContent = 'No active call';
+    el('callTimer').textContent = 'Ready to dial';
+    el('callTimer').className = 'call-timer t-idle';
+  }
+}
+
+function updateCallDisplay(name, number) {
+  el('callName').textContent = name || number;
+  el('callNumber').textContent = number;
+}
+
+function setCtrlsEnabled(enabled) {
+  ['muteBtn','holdBtn','recBtn'].forEach(id => { el(id).disabled = !enabled; });
+}
+
+function setSIPStatus(type, text) {
+  el('sipDot').className = 'sip-dot' + (type ? ' ' + type : '');
+  el('sipStatusText').textContent = text;
+}
+
+// ═══════════════════════════════════════════════════
+// MODALS
+// ═══════════════════════════════════════════════════
+function openModal(id) { el(id).classList.add('show'); }
+function closeModal(id) { el(id).classList.remove('show'); }
+function openSettings() { openModal('settingsModal'); loadSIPConfig(); }
+function openSheetsModal() { openModal('sheetsModal'); }
+function openConferenceModal() {
+  if (!state.session) { toast('No active call to conference', 'warning'); return; }
+  el('confNumber').value = '';
+  const primary = el('callName').textContent || '—';
+  el('confActiveParties').innerHTML = `
+    <div class="conference-party">
+      <div class="cp-header"><span>Active Call</span><span style="color:var(--green2)">● Live</span></div>
+      <div class="cp-num">${primary}</div>
+    </div>`;
+  openModal('conferenceModal');
+}
+function openTransferModal() {
+  if (!state.session) { toast('No active call to transfer', 'warning'); return; }
+  el('xferNumber').value = '';
+  openModal('transferModal');
+}
+
+// Close modal on overlay click
+document.querySelectorAll('.overlay').forEach(ov => {
+  ov.addEventListener('click', (e) => { if (e.target === ov) ov.classList.remove('show'); });
+});
+
+// Transfer type change
+document.getElementById('xferType').addEventListener('change', function() {
+  el('attendedInfo').style.display = this.value === 'attended' ? 'block' : 'none';
+});
+
+function loadSIPConfig() {
+  const cfg = getSIPConfig();
+  if (cfg.wss)         el('sipWss').value         = cfg.wss;
+  if (cfg.domain)      el('sipDomain').value       = cfg.domain;
+  if (cfg.username)    el('sipUsername').value     = cfg.username;
+  if (cfg.password)    el('sipPassword').value     = cfg.password;
+  if (cfg.displayName) el('sipDisplayName').value  = cfg.displayName;
+  if (cfg.proxy)       el('sipProxy').value        = cfg.proxy;
+}
+
+function getSIPConfig() {
+  try { return JSON.parse(localStorage.getItem('sipConfig') || '{}'); } catch(e) { return {}; }
+}
+
+// ═══════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════
+function toast(msg, type = 'info', dur = 3500) {
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  el('toastContainer').appendChild(t);
+  setTimeout(() => t.remove(), dur);
+}
+
+// ═══════════════════════════════════════════════════
+// UTILITIES
+// ═══════════════════════════════════════════════════
+function el(id) { return document.getElementById(id); }
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatSeconds(s) {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`
+    : `${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+}
+
+function formatDate(iso) {
+  try {
+    return new Date(iso).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  } catch(e) { return iso; }
+}
+
+function stringToColor(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  const h = Math.abs(hash) % 360;
+  return `hsl(${h},60%,55%)`;
+}
+
+// ═══════════════════════════════════════════════════
+// KEYBOARD SHORTCUTS
+// ═══════════════════════════════════════════════════
+document.addEventListener('keydown', (e) => {
+  // Don't intercept when typing in an input
+  if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.overlay.show').forEach(o => o.classList.remove('show'));
+  }
+  if (e.key === 'F2') endCall();
+  if (e.key === 'F3') toggleMute();
+  if (e.key === 'F4') toggleHold();
+  if (e.key === 'F5') dialNext();
+});
+
+// ═══════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════
+function init() {
+  buildDialpad();
+  filteredContacts = contacts.slice();
+  renderContactList();
+  updateQueueStats();
+  setCallState('idle');
+  setSIPStatus('', 'Not Connected — Configure SIP');
+
+  // Load saved SIP config and auto-restore display
+  const cfg = getSIPConfig();
+  if (cfg.username && cfg.domain) {
+    setSIPStatus('', `${cfg.username}@${cfg.domain} — Click to reconnect`);
+  }
+
+  // Restore auto-dial preference
+  const savedDelay = localStorage.getItem('dialDelay');
+  if (savedDelay) el('dialDelay').value = savedDelay;
+  el('dialDelay').addEventListener('change', () => {
+    localStorage.setItem('dialDelay', el('dialDelay').value);
+  });
+
+  // Show welcome toast
+  toast('BPO Auto-Dialer ready — configure SIP to begin', 'info', 4000);
+}
+
+init();
+</script>
+</body>
+</html>

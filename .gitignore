@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.pyo
+dist/
+build/
+*.spec
+*.egg-info/
+.env
+*.db
+dialer_config.json
+google_token.json

@@ -1,0 +1,56 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches:
+      - claude/sip-phone-dialer-auto-dial-OzKmr
+    paths:
+      - 'sip-dialer-app/**'
+      - '.github/workflows/build-desktop.yml'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "sounddevice>=0.4.6" "numpy>=1.24.0" pyinstaller pyvoip
+
+      - name: Bundle pyvoip as zip
+        shell: pwsh
+        run: python sip-dialer-app/bundle_pyvoip.py
+
+      - name: Build EXE
+        shell: bash
+        run: |
+          python -m PyInstaller \
+            --onefile \
+            --windowed \
+            --name "BPO-SIP-Dialer" \
+            --distpath sip-dialer-app/dist \
+            --workpath sip-dialer-app/build \
+            --add-data "sip-dialer-app/pyvoip.zip;." \
+            --hidden-import audioop \
+            --collect-all sounddevice \
+            --hidden-import numpy \
+            --hidden-import _cffi_backend \
+            sip-dialer-app/main.py
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: BPO-SIP-Dialer-Windows
+          path: sip-dialer-app/dist/BPO-SIP-Dialer.exe
+          retention-days: 30
